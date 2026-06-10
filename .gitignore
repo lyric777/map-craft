@@ -1,0 +1,12 @@
+node_modules
+dist
+.pnpm-store
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+.DS_Store
+coverage
+.vite
+playwright-report
+test-results
+*.log
