@@ -43,10 +43,27 @@ const isFeatureSelectable = (feature: MapGeoJSONFeature | undefined): feature is
   return Boolean(feature?.properties?.objectId);
 };
 
+const getCursorForState = (tool: string, dragging: boolean) => {
+  if (dragging) {
+    return 'grabbing';
+  }
+
+  if (tool === 'polygon') {
+    return 'crosshair';
+  }
+
+  if (tool === 'move') {
+    return 'grab';
+  }
+
+  return 'default';
+};
+
 export function MapCanvas({ onMapReady }: MapCanvasProps) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [draftCoordinates, setDraftCoordinates] = useState<Position[]>([]);
+  const [hoverCoordinate, setHoverCoordinate] = useState<Position | null>(null);
   const {
     currentTool,
     project,
@@ -71,26 +88,59 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
   const selectObjectRef = useRef(selectObject);
   const setViewportRef = useRef(setViewport);
   const initialViewportRef = useRef(project.viewport);
+  const draftCoordinatesRef = useRef<Position[]>(draftCoordinates);
+  const selectedLayerIdRef = useRef(selectedLayerId);
+  const draggingRef = useRef(false);
 
   const objectsGeoJson = useMemo(
     () => projectToFeatureCollection(project.layers, selectedObjectId),
     [project.layers, selectedObjectId],
   );
+  const closeToStart = useMemo(() => {
+    if (!hoverCoordinate || draftCoordinates.length < 3 || !mapRef.current) {
+      return false;
+    }
+
+    const first = draftCoordinates[0];
+    const map = mapRef.current;
+    const firstPoint = map.project({ lng: first[0], lat: first[1] });
+    const hoverPoint = map.project({ lng: hoverCoordinate[0], lat: hoverCoordinate[1] });
+    return Math.hypot(firstPoint.x - hoverPoint.x, firstPoint.y - hoverPoint.y) < 12;
+  }, [draftCoordinates, hoverCoordinate]);
   const draftGeoJson = useMemo(
-    () => draftPolygonToFeatureCollection(draftCoordinates as number[][]),
-    [draftCoordinates],
+    () =>
+      draftPolygonToFeatureCollection(
+        draftCoordinates as number[][],
+        hoverCoordinate as number[] | null,
+        closeToStart,
+      ),
+    [closeToStart, draftCoordinates, hoverCoordinate],
   );
   const objectsGeoJsonRef = useRef(objectsGeoJson);
   const draftGeoJsonRef = useRef(draftGeoJson);
+  const closeToStartRef = useRef(closeToStart);
 
   useEffect(() => {
     currentToolRef.current = currentTool;
     onMapReadyRef.current = onMapReady;
     selectObjectRef.current = selectObject;
     setViewportRef.current = setViewport;
+    draftCoordinatesRef.current = draftCoordinates;
+    selectedLayerIdRef.current = selectedLayerId;
     objectsGeoJsonRef.current = objectsGeoJson;
     draftGeoJsonRef.current = draftGeoJson;
-  }, [currentTool, draftGeoJson, objectsGeoJson, onMapReady, selectObject, setViewport]);
+    closeToStartRef.current = closeToStart;
+  }, [
+    closeToStart,
+    currentTool,
+    draftCoordinates,
+    draftGeoJson,
+    objectsGeoJson,
+    onMapReady,
+    selectObject,
+    selectedLayerId,
+    setViewport,
+  ]);
 
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) {
@@ -108,6 +158,13 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
         preserveDrawingBuffer: true,
       },
     });
+
+    const updateCanvasCursor = () => {
+      map.getCanvasContainer().style.cursor = getCursorForState(
+        currentToolRef.current,
+        draggingRef.current,
+      );
+    };
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
 
@@ -184,7 +241,7 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
         id: 'draft-fill',
         type: 'fill',
         source: DRAFT_SOURCE_ID,
-        filter: ['==', ['geometry-type'], 'Polygon'],
+        filter: ['all', ['==', ['geometry-type'], 'Polygon'], ['==', ['get', 'draftRole'], 'preview-fill']],
         paint: {
           'fill-color': '#45c4ff',
           'fill-opacity': 0.2,
@@ -192,23 +249,73 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       });
 
       map.addLayer({
-        id: 'draft-line',
+        id: 'draft-committed-line',
         type: 'line',
         source: DRAFT_SOURCE_ID,
-        filter: ['==', ['geometry-type'], 'LineString'],
+        filter: ['all', ['==', ['geometry-type'], 'LineString'], ['==', ['get', 'draftRole'], 'committed-line']],
         paint: {
           'line-color': '#45c4ff',
           'line-width': 2,
         },
       });
+
+      map.addLayer({
+        id: 'draft-active-line',
+        type: 'line',
+        source: DRAFT_SOURCE_ID,
+        filter: ['all', ['==', ['geometry-type'], 'LineString'], ['==', ['get', 'draftRole'], 'active-line']],
+        paint: {
+          'line-color': '#9be7ff',
+          'line-width': 2,
+          'line-dasharray': [2, 2],
+        },
+      });
+
+      map.addLayer({
+        id: 'draft-vertices',
+        type: 'circle',
+        source: DRAFT_SOURCE_ID,
+        filter: ['all', ['==', ['geometry-type'], 'Point'], ['==', ['get', 'draftRole'], 'vertex']],
+        paint: {
+          'circle-radius': 4,
+          'circle-color': '#45c4ff',
+          'circle-stroke-width': 1.5,
+          'circle-stroke-color': '#ffffff',
+        },
+      });
+
+      map.addLayer({
+        id: 'draft-start-vertex',
+        type: 'circle',
+        source: DRAFT_SOURCE_ID,
+        filter: ['all', ['==', ['geometry-type'], 'Point'], ['==', ['get', 'draftRole'], 'start-vertex']],
+        paint: {
+          'circle-radius': ['case', ['boolean', ['get', 'snapReady'], false], 7, 5],
+          'circle-color': ['case', ['boolean', ['get', 'snapReady'], false], '#ffd166', '#45c4ff'],
+          'circle-stroke-width': 2,
+          'circle-stroke-color': '#ffffff',
+        },
+      });
     });
 
     map.on('moveend', () => {
+      draggingRef.current = false;
+      updateCanvasCursor();
       const center = map.getCenter();
       setViewportRef.current({
         center: [center.lng, center.lat],
         zoom: map.getZoom(),
       });
+    });
+
+    map.on('dragstart', () => {
+      draggingRef.current = true;
+      updateCanvasCursor();
+    });
+
+    map.on('dragend', () => {
+      draggingRef.current = false;
+      updateCanvasCursor();
     });
 
     map.on('click', 'polygon-fill', (event) => {
@@ -236,11 +343,82 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
     onMapReadyRef.current(map);
     mapRef.current = map;
 
+    const finishPolygon = () => {
+      const coords = draftCoordinatesRef.current;
+      const layerId = selectedLayerIdRef.current;
+      if (coords.length < 3 || !layerId) {
+        return;
+      }
+
+      addObjectToSelectedLayer(createPolygonObject([...coords, coords[0]] as number[][]));
+      setDraftCoordinates([]);
+      setHoverCoordinate(null);
+    };
+
+    const handleMapClick = (event: MapMouseEvent) => {
+      if (currentToolRef.current !== 'polygon') {
+        return;
+      }
+
+      if (closeToStartRef.current) {
+        finishPolygon();
+        return;
+      }
+
+      const nextCoord: Position = [event.lngLat.lng, event.lngLat.lat];
+      setDraftCoordinates((coords) => {
+        const next = [...coords, nextCoord];
+        draftCoordinatesRef.current = next;
+        return next;
+      });
+      setHoverCoordinate(nextCoord);
+    };
+
+    const handleDoubleClick = (event: MapMouseEvent) => {
+      if (currentToolRef.current !== 'polygon') {
+        return;
+      }
+
+      event.originalEvent.preventDefault();
+      finishPolygon();
+    };
+
+    const handleMouseMove = (event: MapMouseEvent) => {
+      if (currentToolRef.current !== 'polygon' || draftCoordinatesRef.current.length === 0) {
+        setHoverCoordinate(null);
+        return;
+      }
+
+      setHoverCoordinate([event.lngLat.lng, event.lngLat.lat]);
+    };
+
+    const handleMouseOut = () => {
+      setHoverCoordinate(null);
+    };
+
+    const handleEmptySelection = () => {
+      if (currentToolRef.current === 'move') {
+        selectObjectRef.current(null, selectedLayerIdRef.current);
+      }
+    };
+
+    map.on('click', handleMapClick);
+    map.on('dblclick', handleDoubleClick);
+    map.on('mousemove', handleMouseMove);
+    map.on('mouseout', handleMouseOut);
+    map.on('click', handleEmptySelection);
+
     return () => {
+      map.off('click', handleMapClick);
+      map.off('dblclick', handleDoubleClick);
+      map.off('mousemove', handleMouseMove);
+      map.off('mouseout', handleMouseOut);
+      map.off('click', handleEmptySelection);
+      map.getCanvasContainer().style.cursor = '';
       map.remove();
       mapRef.current = null;
     };
-  }, []);
+  }, [addObjectToSelectedLayer]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -272,66 +450,17 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       return;
     }
 
+    map.getCanvasContainer().style.cursor = getCursorForState(currentTool, draggingRef.current);
+
     if (currentTool === 'polygon') {
       map.doubleClickZoom.disable();
     } else {
       map.doubleClickZoom.enable();
+      draftCoordinatesRef.current = [];
       setDraftCoordinates([]);
+      setHoverCoordinate(null);
     }
-
-    const finishPolygon = () => {
-      if (draftCoordinates.length < 3 || !selectedLayerId) {
-        return;
-      }
-
-      addObjectToSelectedLayer(createPolygonObject([...draftCoordinates, draftCoordinates[0]] as number[][]));
-      setDraftCoordinates([]);
-    };
-
-    const handleMapClick = (event: MapMouseEvent) => {
-      if (currentTool !== 'polygon') {
-        return;
-      }
-
-      const nextCoord: Position = [event.lngLat.lng, event.lngLat.lat];
-      if (draftCoordinates.length >= 3) {
-        const first = draftCoordinates[0];
-        const firstPoint = map.project({ lng: first[0], lat: first[1] });
-        const distance = Math.hypot(firstPoint.x - event.point.x, firstPoint.y - event.point.y);
-        if (distance < 12) {
-          finishPolygon();
-          return;
-        }
-      }
-
-      setDraftCoordinates((coords) => [...coords, nextCoord]);
-    };
-
-    const handleDoubleClick = (event: MapMouseEvent) => {
-      if (currentTool !== 'polygon') {
-        return;
-      }
-
-      event.originalEvent.preventDefault();
-      finishPolygon();
-    };
-
-    const handleEmptySelection = () => {
-      if (currentTool === 'move') {
-        selectObject(null, selectedLayerId);
-      }
-    };
-
-    map.on('click', handleMapClick);
-    map.on('dblclick', handleDoubleClick);
-    map.on('click', handleEmptySelection);
-
-    return () => {
-      map.off('click', handleMapClick);
-      map.off('dblclick', handleDoubleClick);
-      map.off('click', handleEmptySelection);
-    };
-  }, [addObjectToSelectedLayer, currentTool, draftCoordinates, selectedLayerId, selectObject]);
+  }, [currentTool]);
 
   useEffect(() => {
     const map = mapRef.current;

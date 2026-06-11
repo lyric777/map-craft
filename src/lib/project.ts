@@ -91,31 +91,73 @@ export const projectToFeatureCollection = (
 };
 
 export const draftPolygonToFeatureCollection = (
-  coordinates: number[][],
+  committedCoordinates: number[][],
+  previewCoordinate: number[] | null,
+  snapToStart: boolean,
 ): FeatureCollection<Geometry> => {
-  if (coordinates.length === 0) {
+  if (committedCoordinates.length === 0) {
     return { type: 'FeatureCollection', features: [] };
   }
 
-  const features: Feature<Geometry>[] = [
-    {
+  const features: Feature<Geometry>[] = [];
+
+  if (committedCoordinates.length >= 2) {
+    features.push({
       type: 'Feature',
       geometry: {
         type: 'LineString',
-        coordinates,
+        coordinates: committedCoordinates,
       },
-      properties: {},
-    },
-  ];
+      properties: {
+        draftRole: 'committed-line',
+      },
+    });
+  }
 
-  if (coordinates.length >= 3) {
+  committedCoordinates.forEach((coordinate, index) => {
+    features.push({
+      type: 'Feature',
+      geometry: {
+        type: 'Point',
+        coordinates: coordinate,
+      },
+      properties: {
+        draftRole: index === 0 ? 'start-vertex' : 'vertex',
+        snapReady: snapToStart && index === 0,
+      },
+    });
+  });
+
+  const livePreviewCoordinate =
+    previewCoordinate && snapToStart ? committedCoordinates[0] : previewCoordinate;
+
+  if (livePreviewCoordinate && committedCoordinates.length >= 1) {
+    features.push({
+      type: 'Feature',
+      geometry: {
+        type: 'LineString',
+        coordinates: [committedCoordinates.at(-1)!, livePreviewCoordinate],
+      },
+      properties: {
+        draftRole: 'active-line',
+      },
+    });
+  }
+
+  const polygonPreviewCoordinates = livePreviewCoordinate
+    ? [...committedCoordinates, livePreviewCoordinate]
+    : committedCoordinates;
+
+  if (polygonPreviewCoordinates.length >= 3) {
     features.push({
       type: 'Feature',
       geometry: {
         type: 'Polygon',
-        coordinates: [[...coordinates, coordinates[0]]],
+        coordinates: [[...polygonPreviewCoordinates, committedCoordinates[0]]],
       },
-      properties: {},
+      properties: {
+        draftRole: 'preview-fill',
+      },
     });
   }
 
