@@ -1,4 +1,9 @@
-import type { Feature, FeatureCollection, Geometry, Polygon } from 'geojson';
+import type { Feature, FeatureCollection, Geometry, Polygon, Position } from 'geojson';
+
+const EMPTY_FEATURE_COLLECTION: FeatureCollection<Geometry> = {
+  type: 'FeatureCollection',
+  features: [],
+};
 
 import type {
   MapcraftLayer,
@@ -43,6 +48,28 @@ export const createPolygonObject = (coordinates: Polygon['coordinates'][0]): Map
   geometry: {
     type: 'Polygon',
     coordinates: [coordinates],
+  },
+  style: { ...DEFAULT_STYLE },
+  meta: {},
+});
+
+export const createPointObject = (coordinate: Position): MapcraftObject => ({
+  id: createId(),
+  type: 'point',
+  geometry: {
+    type: 'Point',
+    coordinates: coordinate,
+  },
+  style: { ...DEFAULT_STYLE },
+  meta: {},
+});
+
+export const createLineObject = (coordinates: Position[]): MapcraftObject => ({
+  id: createId(),
+  type: 'line',
+  geometry: {
+    type: 'LineString',
+    coordinates,
   },
   style: { ...DEFAULT_STYLE },
   meta: {},
@@ -96,7 +123,7 @@ export const draftPolygonToFeatureCollection = (
   snapToStart: boolean,
 ): FeatureCollection<Geometry> => {
   if (committedCoordinates.length === 0) {
-    return { type: 'FeatureCollection', features: [] };
+    return EMPTY_FEATURE_COLLECTION;
   }
 
   const features: Feature<Geometry>[] = [];
@@ -157,6 +184,61 @@ export const draftPolygonToFeatureCollection = (
       },
       properties: {
         draftRole: 'preview-fill',
+      },
+    });
+  }
+
+  return {
+    type: 'FeatureCollection',
+    features,
+  };
+};
+
+export const draftLineToFeatureCollection = (
+  committedCoordinates: number[][],
+  previewCoordinate: number[] | null,
+): FeatureCollection<Geometry> => {
+  if (committedCoordinates.length === 0) {
+    return EMPTY_FEATURE_COLLECTION;
+  }
+
+  const features: Feature<Geometry>[] = [];
+
+  if (committedCoordinates.length >= 2) {
+    features.push({
+      type: 'Feature',
+      geometry: {
+        type: 'LineString',
+        coordinates: committedCoordinates,
+      },
+      properties: {
+        draftRole: 'committed-line',
+      },
+    });
+  }
+
+  committedCoordinates.forEach((coordinate, index) => {
+    features.push({
+      type: 'Feature',
+      geometry: {
+        type: 'Point',
+        coordinates: coordinate,
+      },
+      properties: {
+        draftRole: index === 0 ? 'start-vertex' : 'vertex',
+      },
+    });
+  });
+
+  if (previewCoordinate) {
+    features.push({
+      type: 'Feature',
+      geometry: {
+        type: 'LineString',
+        coordinates: [committedCoordinates.at(-1)!, previewCoordinate],
+      },
+      properties: {
+        draftRole: 'active-line',
       },
     });
   }

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { createPolygonObject } from '../lib/project';
+import { createLineObject, createPointObject, createPolygonObject } from '../lib/project';
 import { useEditorStore } from '../state/editorStore';
 
 describe('editor store', () => {
@@ -50,5 +50,19 @@ describe('editor store', () => {
     const object = useEditorStore.getState().project.layers[0]?.objects[0];
     expect(object?.style.fillColor).toBe('#ff0000');
     expect(object?.style.opacity).toBe(0.6);
+  });
+
+  it('supports point and line objects', () => {
+    const store = useEditorStore.getState();
+    store.addObjectToSelectedLayer(createPointObject([12, 34]));
+    store.addObjectToSelectedLayer(
+      createLineObject([
+        [0, 0],
+        [1, 1],
+      ]),
+    );
+
+    const objects = useEditorStore.getState().project.layers[0]?.objects ?? [];
+    expect(objects.map((object) => object.type)).toEqual(['point', 'line']);
   });
 });

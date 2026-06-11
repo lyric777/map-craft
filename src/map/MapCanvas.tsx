@@ -1,13 +1,17 @@
 import 'maplibre-gl/dist/maplibre-gl.css';
 
-import type { MapGeoJSONFeature, MapMouseEvent, StyleSpecification } from 'maplibre-gl';
+import type { FeatureCollection, Geometry } from 'geojson';
+import type { MapGeoJSONFeature, MapLayerMouseEvent, MapMouseEvent, StyleSpecification } from 'maplibre-gl';
 import type { Position } from 'geojson';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import { useShallow } from 'zustand/react/shallow';
 
 import {
+  createLineObject,
+  createPointObject,
   createPolygonObject,
+  draftLineToFeatureCollection,
   draftPolygonToFeatureCollection,
   projectToFeatureCollection,
 } from '../lib/project';
@@ -38,6 +42,10 @@ interface MapCanvasProps {
 
 const DRAFT_SOURCE_ID = 'draft';
 const OBJECTS_SOURCE_ID = 'objects';
+const EMPTY_DRAFT_GEOJSON: FeatureCollection<Geometry> = {
+  type: 'FeatureCollection',
+  features: [],
+};
 
 const isFeatureSelectable = (feature: MapGeoJSONFeature | undefined): feature is MapGeoJSONFeature => {
   return Boolean(feature?.properties?.objectId);
@@ -46,6 +54,14 @@ const isFeatureSelectable = (feature: MapGeoJSONFeature | undefined): feature is
 const getCursorForState = (tool: string, dragging: boolean) => {
   if (dragging) {
     return 'grabbing';
+  }
+
+  if (tool === 'point') {
+    return 'cell';
+  }
+
+  if (tool === 'line') {
+    return 'crosshair';
   }
 
   if (tool === 'polygon') {
@@ -97,7 +113,7 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
     [project.layers, selectedObjectId],
   );
   const closeToStart = useMemo(() => {
-    if (!hoverCoordinate || draftCoordinates.length < 3 || !mapRef.current) {
+    if (currentTool !== 'polygon' || !hoverCoordinate || draftCoordinates.length < 3 || !mapRef.current) {
       return false;
     }
 
@@ -106,16 +122,25 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
     const firstPoint = map.project({ lng: first[0], lat: first[1] });
     const hoverPoint = map.project({ lng: hoverCoordinate[0], lat: hoverCoordinate[1] });
     return Math.hypot(firstPoint.x - hoverPoint.x, firstPoint.y - hoverPoint.y) < 12;
-  }, [draftCoordinates, hoverCoordinate]);
-  const draftGeoJson = useMemo(
-    () =>
-      draftPolygonToFeatureCollection(
+  }, [currentTool, draftCoordinates, hoverCoordinate]);
+  const draftGeoJson = useMemo(() => {
+    if (currentTool === 'line') {
+      return draftLineToFeatureCollection(
+        draftCoordinates as number[][],
+        hoverCoordinate as number[] | null,
+      );
+    }
+
+    if (currentTool === 'polygon') {
+      return draftPolygonToFeatureCollection(
         draftCoordinates as number[][],
         hoverCoordinate as number[] | null,
         closeToStart,
-      ),
-    [closeToStart, draftCoordinates, hoverCoordinate],
-  );
+      );
+    }
+
+    return EMPTY_DRAFT_GEOJSON;
+  }, [closeToStart, currentTool, draftCoordinates, hoverCoordinate]);
   const objectsGeoJsonRef = useRef(objectsGeoJson);
   const draftGeoJsonRef = useRef(draftGeoJson);
   const closeToStartRef = useRef(closeToStart);
@@ -217,8 +242,18 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
         source: OBJECTS_SOURCE_ID,
         filter: ['==', ['geometry-type'], 'LineString'],
         paint: {
-          'line-color': ['coalesce', ['get', 'strokeColor'], '#ffffff'],
-          'line-width': ['coalesce', ['get', 'strokeWidth'], 2],
+          'line-color': [
+            'case',
+            ['boolean', ['get', 'isSelected'], false],
+            '#ffd166',
+            ['coalesce', ['get', 'strokeColor'], '#ffffff'],
+          ],
+          'line-width': [
+            'case',
+            ['boolean', ['get', 'isSelected'], false],
+            ['+', ['coalesce', ['get', 'strokeWidth'], 2], 1],
+            ['coalesce', ['get', 'strokeWidth'], 2],
+          ],
           'line-opacity': ['coalesce', ['get', 'opacity'], 1],
         },
       });
@@ -229,10 +264,25 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
         source: OBJECTS_SOURCE_ID,
         filter: ['==', ['geometry-type'], 'Point'],
         paint: {
-          'circle-radius': 6,
+          'circle-radius': [
+            'case',
+            ['boolean', ['get', 'isSelected'], false],
+            8,
+            6,
+          ],
           'circle-color': ['coalesce', ['get', 'fillColor'], '#45c4ff'],
-          'circle-stroke-width': 2,
-          'circle-stroke-color': ['coalesce', ['get', 'strokeColor'], '#ffffff'],
+          'circle-stroke-width': [
+            'case',
+            ['boolean', ['get', 'isSelected'], false],
+            3,
+            2,
+          ],
+          'circle-stroke-color': [
+            'case',
+            ['boolean', ['get', 'isSelected'], false],
+            '#ffd166',
+            ['coalesce', ['get', 'strokeColor'], '#ffffff'],
+          ],
           'circle-opacity': ['coalesce', ['get', 'opacity'], 1],
         },
       });
@@ -318,7 +368,7 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       updateCanvasCursor();
     });
 
-    map.on('click', 'polygon-fill', (event) => {
+    const handleObjectSelection = (event: MapLayerMouseEvent) => {
       if (currentToolRef.current !== 'move') {
         return;
       }
@@ -327,18 +377,12 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       if (isFeatureSelectable(feature)) {
         selectObjectRef.current(String(feature.properties.objectId), String(feature.properties.layerId));
       }
-    });
+    };
 
-    map.on('click', 'polygon-line', (event) => {
-      if (currentToolRef.current !== 'move') {
-        return;
-      }
-
-      const feature = event.features?.[0];
-      if (isFeatureSelectable(feature)) {
-        selectObjectRef.current(String(feature.properties.objectId), String(feature.properties.layerId));
-      }
-    });
+    map.on('click', 'polygon-fill', handleObjectSelection);
+    map.on('click', 'polygon-line', handleObjectSelection);
+    map.on('click', 'line-string', handleObjectSelection);
+    map.on('click', 'points', handleObjectSelection);
 
     onMapReadyRef.current(map);
     mapRef.current = map;
@@ -355,36 +399,61 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       setHoverCoordinate(null);
     };
 
+    const finishLine = () => {
+      const coords = draftCoordinatesRef.current;
+      const layerId = selectedLayerIdRef.current;
+      if (coords.length < 2 || !layerId) {
+        return;
+      }
+
+      addObjectToSelectedLayer(createLineObject(coords));
+      draftCoordinatesRef.current = [];
+      setDraftCoordinates([]);
+      setHoverCoordinate(null);
+    };
+
     const handleMapClick = (event: MapMouseEvent) => {
-      if (currentToolRef.current !== 'polygon') {
+      if (currentToolRef.current === 'point') {
+        const coordinate: Position = [event.lngLat.lng, event.lngLat.lat];
+        addObjectToSelectedLayer(createPointObject(coordinate));
+        setHoverCoordinate(null);
         return;
       }
 
-      if (closeToStartRef.current) {
-        finishPolygon();
-        return;
-      }
+      if (currentToolRef.current === 'line' || currentToolRef.current === 'polygon') {
+        if (currentToolRef.current === 'polygon' && closeToStartRef.current) {
+          finishPolygon();
+          return;
+        }
 
-      const nextCoord: Position = [event.lngLat.lng, event.lngLat.lat];
-      setDraftCoordinates((coords) => {
-        const next = [...coords, nextCoord];
-        draftCoordinatesRef.current = next;
-        return next;
-      });
-      setHoverCoordinate(nextCoord);
+        const nextCoord: Position = [event.lngLat.lng, event.lngLat.lat];
+        setDraftCoordinates((coords) => {
+          const next = [...coords, nextCoord];
+          draftCoordinatesRef.current = next;
+          return next;
+        });
+        setHoverCoordinate(nextCoord);
+      }
     };
 
     const handleDoubleClick = (event: MapMouseEvent) => {
-      if (currentToolRef.current !== 'polygon') {
+      if (currentToolRef.current !== 'polygon' && currentToolRef.current !== 'line') {
         return;
       }
 
       event.originalEvent.preventDefault();
-      finishPolygon();
+      if (currentToolRef.current === 'polygon') {
+        finishPolygon();
+      } else {
+        finishLine();
+      }
     };
 
     const handleMouseMove = (event: MapMouseEvent) => {
-      if (currentToolRef.current !== 'polygon' || draftCoordinatesRef.current.length === 0) {
+      if (
+        (currentToolRef.current !== 'polygon' && currentToolRef.current !== 'line') ||
+        draftCoordinatesRef.current.length === 0
+      ) {
         setHoverCoordinate(null);
         return;
       }
@@ -414,6 +483,10 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       map.off('mousemove', handleMouseMove);
       map.off('mouseout', handleMouseOut);
       map.off('click', handleEmptySelection);
+      map.off('click', 'polygon-fill', handleObjectSelection);
+      map.off('click', 'polygon-line', handleObjectSelection);
+      map.off('click', 'line-string', handleObjectSelection);
+      map.off('click', 'points', handleObjectSelection);
       map.getCanvasContainer().style.cursor = '';
       map.remove();
       mapRef.current = null;
@@ -454,6 +527,8 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
 
     if (currentTool === 'polygon') {
       map.doubleClickZoom.disable();
+    } else if (currentTool === 'line') {
+      map.doubleClickZoom.disable();
     } else {
       map.doubleClickZoom.enable();
       draftCoordinatesRef.current = [];
@@ -489,6 +564,11 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       {currentTool === 'polygon' && (
         <div className="pointer-events-none absolute left-3 top-3 rounded-md bg-black/50 px-3 py-2 text-xs text-white">
           Click to add vertices. Double-click or click the first point to finish.
+        </div>
+      )}
+      {currentTool === 'line' && (
+        <div className="pointer-events-none absolute left-3 top-3 rounded-md bg-black/50 px-3 py-2 text-xs text-white">
+          Click to add points. Double-click to finish the line.
         </div>
       )}
     </div>

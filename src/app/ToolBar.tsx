@@ -12,8 +12,8 @@ interface ToolBarProps {
 const tools: { id: ToolId; icon: typeof Hand; disabled?: boolean }[] = [
   { id: 'move', icon: Hand },
   { id: 'freeDraw', icon: PenTool, disabled: true },
-  { id: 'point', icon: MapPin, disabled: true },
-  { id: 'line', icon: Route, disabled: true },
+  { id: 'point', icon: MapPin },
+  { id: 'line', icon: Route },
   { id: 'polygon', icon: Shapes },
 ];
 
