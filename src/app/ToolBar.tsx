@@ -47,7 +47,7 @@ export function ToolBar({ currentTool, onSelectTool }: ToolBarProps) {
               <Icon size={18} />
             </button>
             {hoveredTool === id && (
-              <div className="pointer-events-none absolute left-[calc(100%+10px)] top-1/2 z-20 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-surface px-2 py-1 text-xs text-foreground shadow-panel">
+              <div className="pointer-events-none absolute left-[calc(100%+10px)] top-1/2 z-20 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-surface px-2 py-1 text-xs text-foreground">
                 {tooltipText}
               </div>
             )}

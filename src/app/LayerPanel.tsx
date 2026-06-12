@@ -24,7 +24,7 @@ export function LayerPanel({
   onReorderLayer,
 }: LayerPanelProps) {
   return (
-    <section className="flex h-full flex-col rounded-md border border-border bg-panel px-3 py-3 shadow-panel">
+    <section className="flex h-full flex-col rounded-md border border-border bg-panel px-3 py-3">
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2 text-sm font-medium text-foreground">
           <Layers2 size={16} />

@@ -817,18 +817,18 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
   }, [project.viewport]);
 
   return (
-    <div className="relative h-full w-full overflow-hidden rounded-md border border-border bg-panelAlt shadow-panel">
+    <div className="relative h-full w-full overflow-hidden rounded-md border border-border bg-panelAlt">
       <div
         ref={mapContainerRef}
         className="h-full w-full"
       />
       {currentTool === 'polygon' && (
-        <div className="pointer-events-none absolute left-3 top-3 rounded-md border border-white/10 bg-slate-950/60 px-3 py-2 text-xs text-white shadow-panel">
+        <div className="pointer-events-none absolute left-3 top-3 rounded-md border border-white/10 bg-slate-950/60 px-3 py-2 text-xs text-white shadow-[0_4px_10px_rgba(15,23,42,0.18)]">
           Click to add vertices. Double-click or click the first point to finish.
         </div>
       )}
       {currentTool === 'line' && (
-        <div className="pointer-events-none absolute left-3 top-3 rounded-md border border-white/10 bg-slate-950/60 px-3 py-2 text-xs text-white shadow-panel">
+        <div className="pointer-events-none absolute left-3 top-3 rounded-md border border-white/10 bg-slate-950/60 px-3 py-2 text-xs text-white shadow-[0_4px_10px_rgba(15,23,42,0.18)]">
           Click to add points. Double-click to finish the line.
         </div>
       )}

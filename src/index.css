@@ -20,7 +20,7 @@
   --color-danger-soft: rgba(239, 68, 68, 0.12);
   --color-danger-border: rgba(239, 68, 68, 0.35);
   --color-overlay: rgba(0, 0, 0, 0.5);
-  --shadow-panel: 0 8px 24px rgba(0, 0, 0, 0.24);
+  --shadow-panel: 0 4px 12px rgba(0, 0, 0, 0.24);
   color-scheme: dark;
 }
 
@@ -38,8 +38,40 @@
   --color-danger-soft: rgba(239, 68, 68, 0.08);
   --color-danger-border: rgba(220, 38, 38, 0.22);
   --color-overlay: rgba(15, 23, 42, 0.72);
-  --shadow-panel: 0 8px 24px rgba(15, 23, 42, 0.08);
+  --shadow-panel: 0 4px 8px rgba(15, 23, 42, 0.08);
   color-scheme: light;
+}
+
+[data-theme='light'] .bg-surface {
+  background-color: var(--color-surface);
+}
+
+.mapcraft-shell[data-theme='light'].bg-surface {
+  background-color: var(--color-surface);
+}
+
+[data-theme='light'] .bg-panel {
+  background-color: var(--color-panel);
+}
+
+[data-theme='light'] .bg-panelAlt {
+  background-color: var(--color-panel-alt);
+}
+
+[data-theme='light'] .border-border {
+  border-color: var(--color-border);
+}
+
+[data-theme='light'] .text-foreground {
+  color: var(--color-foreground);
+}
+
+[data-theme='light'] .text-muted {
+  color: var(--color-muted);
+}
+
+[data-theme='light'] .text-subtle {
+  color: var(--color-subtle);
 }
 
 * {

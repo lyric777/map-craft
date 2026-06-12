@@ -219,7 +219,7 @@ function App() {
               selectedLayerId={state.selectedLayerId}
               selectedObjectId={state.selectedObjectId}
             />
-            <section className="rounded-md border border-border bg-panel px-4 py-3 shadow-panel">
+            <section className="rounded-md border border-border bg-panel px-4 py-3">
               <div className="text-sm font-medium text-foreground">Session</div>
               <div className="mt-2 text-sm text-muted">{status}</div>
               <div className="mt-6 grid grid-cols-2 gap-4 text-sm text-subtle">

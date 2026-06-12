@@ -18,7 +18,7 @@ export function InspectorPanel({
   onDuplicate,
 }: InspectorPanelProps) {
   return (
-    <aside className="flex h-full flex-col rounded-md border border-border bg-panel px-4 py-4 shadow-panel">
+    <aside className="flex h-full flex-col rounded-md border border-border bg-panel px-4 py-4">
       <div className="mb-4">
         <h2 className="text-sm font-semibold text-foreground">Inspector</h2>
         <p className="mt-1 text-xs text-subtle">
