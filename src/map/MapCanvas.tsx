@@ -1,21 +1,24 @@
 import 'maplibre-gl/dist/maplibre-gl.css';
 
-import type { FeatureCollection, Geometry } from 'geojson';
+import type { FeatureCollection, Geometry, Position } from 'geojson';
 import type { MapGeoJSONFeature, MapLayerMouseEvent, MapMouseEvent, StyleSpecification } from 'maplibre-gl';
-import type { Position } from 'geojson';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import { useShallow } from 'zustand/react/shallow';
 
 import {
+  buildGeometryFromVertices,
   createLineObject,
   createPointObject,
   createPolygonObject,
   draftLineToFeatureCollection,
   draftPolygonToFeatureCollection,
+  getEditableVertices,
   projectToFeatureCollection,
+  vertexHandlesToFeatureCollection,
 } from '../lib/project';
-import { useEditorStore } from '../state/editorStore';
+import { selectActiveObject, useEditorStore } from '../state/editorStore';
+import type { ToolId } from '../types/project';
 
 const BASEMAP_STYLE: StyleSpecification = {
   version: 8,
@@ -40,36 +43,42 @@ interface MapCanvasProps {
   onMapReady: (map: maplibregl.Map) => void;
 }
 
-const DRAFT_SOURCE_ID = 'draft';
 const OBJECTS_SOURCE_ID = 'objects';
-const EMPTY_DRAFT_GEOJSON: FeatureCollection<Geometry> = {
+const DRAFT_SOURCE_ID = 'draft';
+const EDIT_SOURCE_ID = 'edit-vertices';
+const EMPTY_GEOJSON: FeatureCollection<Geometry> = {
   type: 'FeatureCollection',
   features: [],
 };
 
-const isFeatureSelectable = (feature: MapGeoJSONFeature | undefined): feature is MapGeoJSONFeature => {
-  return Boolean(feature?.properties?.objectId);
-};
+const isFeatureSelectable = (feature: MapGeoJSONFeature | undefined): feature is MapGeoJSONFeature =>
+  Boolean(feature?.properties?.objectId);
 
-const getCursorForState = (tool: string, dragging: boolean) => {
-  if (dragging) {
+const getCursorForState = ({
+  tool,
+  isMapDragging,
+  isVertexHovering,
+  isVertexDragging,
+}: {
+  tool: ToolId;
+  isMapDragging: boolean;
+  isVertexHovering: boolean;
+  isVertexDragging: boolean;
+}) => {
+  if (isMapDragging || isVertexDragging) {
     return 'grabbing';
+  }
+
+  if (isVertexHovering && tool === 'move') {
+    return 'grab';
   }
 
   if (tool === 'point') {
     return 'cell';
   }
 
-  if (tool === 'line') {
+  if (tool === 'line' || tool === 'polygon') {
     return 'crosshair';
-  }
-
-  if (tool === 'polygon') {
-    return 'crosshair';
-  }
-
-  if (tool === 'move') {
-    return 'grab';
   }
 
   return 'default';
@@ -80,6 +89,9 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [draftCoordinates, setDraftCoordinates] = useState<Position[]>([]);
   const [hoverCoordinate, setHoverCoordinate] = useState<Position | null>(null);
+  const [hoverVertexIndex, setHoverVertexIndex] = useState<number | null>(null);
+  const [dragVertexIndex, setDragVertexIndex] = useState<number | null>(null);
+  const [previewVertices, setPreviewVertices] = useState<Position[] | null>(null);
   const {
     currentTool,
     project,
@@ -88,6 +100,7 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
     setViewport,
     addObjectToSelectedLayer,
     selectObject,
+    updateSelectedObjectGeometry,
   } = useEditorStore(
     useShallow((state) => ({
       currentTool: state.currentTool,
@@ -97,21 +110,40 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       setViewport: state.setViewport,
       addObjectToSelectedLayer: state.addObjectToSelectedLayer,
       selectObject: state.selectObject,
+      updateSelectedObjectGeometry: state.updateSelectedObjectGeometry,
     })),
   );
-  const currentToolRef = useRef(currentTool);
-  const onMapReadyRef = useRef(onMapReady);
-  const selectObjectRef = useRef(selectObject);
-  const setViewportRef = useRef(setViewport);
-  const initialViewportRef = useRef(project.viewport);
-  const draftCoordinatesRef = useRef<Position[]>(draftCoordinates);
-  const selectedLayerIdRef = useRef(selectedLayerId);
-  const draggingRef = useRef(false);
+  const selectedObject = useMemo(
+    () => selectActiveObject(project.layers, selectedLayerId, selectedObjectId),
+    [project.layers, selectedLayerId, selectedObjectId],
+  );
+
+  const selectedEditableVertices = useMemo(() => {
+    if (currentTool !== 'move') {
+      return [];
+    }
+
+    return previewVertices ?? getEditableVertices(selectedObject) ?? [];
+  }, [currentTool, previewVertices, selectedObject]);
+
+  const previewGeometry = useMemo(() => {
+    if (!selectedObject || !previewVertices) {
+      return null;
+    }
+
+    return buildGeometryFromVertices(selectedObject.type, previewVertices);
+  }, [previewVertices, selectedObject]);
 
   const objectsGeoJson = useMemo(
-    () => projectToFeatureCollection(project.layers, selectedObjectId),
-    [project.layers, selectedObjectId],
+    () =>
+      projectToFeatureCollection(
+        project.layers,
+        selectedObjectId,
+        previewGeometry && selectedObjectId ? { [selectedObjectId]: previewGeometry } : {},
+      ),
+    [previewGeometry, project.layers, selectedObjectId],
   );
+
   const closeToStart = useMemo(() => {
     if (currentTool !== 'polygon' || !hoverCoordinate || draftCoordinates.length < 3 || !mapRef.current) {
       return false;
@@ -123,6 +155,7 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
     const hoverPoint = map.project({ lng: hoverCoordinate[0], lat: hoverCoordinate[1] });
     return Math.hypot(firstPoint.x - hoverPoint.x, firstPoint.y - hoverPoint.y) < 12;
   }, [currentTool, draftCoordinates, hoverCoordinate]);
+
   const draftGeoJson = useMemo(() => {
     if (currentTool === 'line') {
       return draftLineToFeatureCollection(
@@ -139,32 +172,65 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       );
     }
 
-    return EMPTY_DRAFT_GEOJSON;
+    return EMPTY_GEOJSON;
   }, [closeToStart, currentTool, draftCoordinates, hoverCoordinate]);
+
+  const editGeoJson = useMemo(
+    () => vertexHandlesToFeatureCollection(selectedEditableVertices, hoverVertexIndex, dragVertexIndex),
+    [dragVertexIndex, hoverVertexIndex, selectedEditableVertices],
+  );
+
+  const currentToolRef = useRef(currentTool);
+  const onMapReadyRef = useRef(onMapReady);
+  const selectObjectRef = useRef(selectObject);
+  const setViewportRef = useRef(setViewport);
+  const updateSelectedObjectGeometryRef = useRef(updateSelectedObjectGeometry);
   const objectsGeoJsonRef = useRef(objectsGeoJson);
   const draftGeoJsonRef = useRef(draftGeoJson);
+  const editGeoJsonRef = useRef(editGeoJson);
+  const initialViewportRef = useRef(project.viewport);
+  const draftCoordinatesRef = useRef<Position[]>(draftCoordinates);
+  const selectedLayerIdRef = useRef(selectedLayerId);
+  const selectedObjectRef = useRef(selectedObject);
+  const hoverVertexIndexRef = useRef<number | null>(hoverVertexIndex);
+  const dragVertexIndexRef = useRef<number | null>(dragVertexIndex);
+  const previewVerticesRef = useRef<Position[] | null>(previewVertices);
   const closeToStartRef = useRef(closeToStart);
+  const mapDraggingRef = useRef(false);
+  const suppressNextMapClickRef = useRef(false);
 
   useEffect(() => {
     currentToolRef.current = currentTool;
     onMapReadyRef.current = onMapReady;
     selectObjectRef.current = selectObject;
     setViewportRef.current = setViewport;
-    draftCoordinatesRef.current = draftCoordinates;
-    selectedLayerIdRef.current = selectedLayerId;
+    updateSelectedObjectGeometryRef.current = updateSelectedObjectGeometry;
     objectsGeoJsonRef.current = objectsGeoJson;
     draftGeoJsonRef.current = draftGeoJson;
+    editGeoJsonRef.current = editGeoJson;
+    draftCoordinatesRef.current = draftCoordinates;
+    selectedLayerIdRef.current = selectedLayerId;
+    selectedObjectRef.current = selectedObject;
+    hoverVertexIndexRef.current = hoverVertexIndex;
+    dragVertexIndexRef.current = dragVertexIndex;
+    previewVerticesRef.current = previewVertices;
     closeToStartRef.current = closeToStart;
   }, [
     closeToStart,
     currentTool,
     draftCoordinates,
     draftGeoJson,
-    objectsGeoJson,
+    dragVertexIndex,
+    editGeoJson,
+    hoverVertexIndex,
     onMapReady,
+    objectsGeoJson,
+    previewVertices,
     selectObject,
     selectedLayerId,
+    selectedObject,
     setViewport,
+    updateSelectedObjectGeometry,
   ]);
 
   useEffect(() => {
@@ -185,10 +251,25 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
     });
 
     const updateCanvasCursor = () => {
-      map.getCanvasContainer().style.cursor = getCursorForState(
-        currentToolRef.current,
-        draggingRef.current,
-      );
+      map.getCanvasContainer().style.cursor = getCursorForState({
+        tool: currentToolRef.current,
+        isMapDragging: mapDraggingRef.current,
+        isVertexHovering: hoverVertexIndexRef.current !== null,
+        isVertexDragging: dragVertexIndexRef.current !== null,
+      });
+    };
+
+    const resetVertexEditing = () => {
+      dragVertexIndexRef.current = null;
+      hoverVertexIndexRef.current = null;
+      previewVerticesRef.current = null;
+      setDragVertexIndex(null);
+      setHoverVertexIndex(null);
+      setPreviewVertices(null);
+      if (!map.dragPan.isEnabled()) {
+        map.dragPan.enable();
+      }
+      updateCanvasCursor();
     };
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
@@ -202,6 +283,11 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       map.addSource(DRAFT_SOURCE_ID, {
         type: 'geojson',
         data: draftGeoJsonRef.current,
+      });
+
+      map.addSource(EDIT_SOURCE_ID, {
+        type: 'geojson',
+        data: editGeoJsonRef.current,
       });
 
       map.addLayer({
@@ -264,19 +350,9 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
         source: OBJECTS_SOURCE_ID,
         filter: ['==', ['geometry-type'], 'Point'],
         paint: {
-          'circle-radius': [
-            'case',
-            ['boolean', ['get', 'isSelected'], false],
-            8,
-            6,
-          ],
+          'circle-radius': ['case', ['boolean', ['get', 'isSelected'], false], 8, 6],
           'circle-color': ['coalesce', ['get', 'fillColor'], '#45c4ff'],
-          'circle-stroke-width': [
-            'case',
-            ['boolean', ['get', 'isSelected'], false],
-            3,
-            2,
-          ],
+          'circle-stroke-width': ['case', ['boolean', ['get', 'isSelected'], false], 3, 2],
           'circle-stroke-color': [
             'case',
             ['boolean', ['get', 'isSelected'], false],
@@ -346,10 +422,46 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
           'circle-stroke-color': '#ffffff',
         },
       });
+
+      map.addLayer({
+        id: 'edit-vertex-hit',
+        type: 'circle',
+        source: EDIT_SOURCE_ID,
+        paint: {
+          'circle-radius': 12,
+          'circle-opacity': 0,
+        },
+      });
+
+      map.addLayer({
+        id: 'edit-vertices',
+        type: 'circle',
+        source: EDIT_SOURCE_ID,
+        paint: {
+          'circle-radius': [
+            'case',
+            ['boolean', ['get', 'isDragging'], false],
+            8,
+            ['boolean', ['get', 'isHover'], false],
+            7,
+            5,
+          ],
+          'circle-color': [
+            'case',
+            ['boolean', ['get', 'isDragging'], false],
+            '#ffd166',
+            ['boolean', ['get', 'isHover'], false],
+            '#9be7ff',
+            '#ffffff',
+          ],
+          'circle-stroke-width': 2,
+          'circle-stroke-color': '#0f172a',
+        },
+      });
     });
 
     map.on('moveend', () => {
-      draggingRef.current = false;
+      mapDraggingRef.current = false;
       updateCanvasCursor();
       const center = map.getCenter();
       setViewportRef.current({
@@ -359,33 +471,14 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
     });
 
     map.on('dragstart', () => {
-      draggingRef.current = true;
+      mapDraggingRef.current = true;
       updateCanvasCursor();
     });
 
     map.on('dragend', () => {
-      draggingRef.current = false;
+      mapDraggingRef.current = false;
       updateCanvasCursor();
     });
-
-    const handleObjectSelection = (event: MapLayerMouseEvent) => {
-      if (currentToolRef.current !== 'move') {
-        return;
-      }
-
-      const feature = event.features?.[0];
-      if (isFeatureSelectable(feature)) {
-        selectObjectRef.current(String(feature.properties.objectId), String(feature.properties.layerId));
-      }
-    };
-
-    map.on('click', 'polygon-fill', handleObjectSelection);
-    map.on('click', 'polygon-line', handleObjectSelection);
-    map.on('click', 'line-string', handleObjectSelection);
-    map.on('click', 'points', handleObjectSelection);
-
-    onMapReadyRef.current(map);
-    mapRef.current = map;
 
     const finishPolygon = () => {
       const coords = draftCoordinatesRef.current;
@@ -395,6 +488,7 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       }
 
       addObjectToSelectedLayer(createPolygonObject([...coords, coords[0]] as number[][]));
+      draftCoordinatesRef.current = [];
       setDraftCoordinates([]);
       setHoverCoordinate(null);
     };
@@ -412,7 +506,74 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       setHoverCoordinate(null);
     };
 
+    const handleObjectSelection = (event: MapLayerMouseEvent) => {
+      if (currentToolRef.current !== 'move') {
+        return;
+      }
+
+      const feature = event.features?.[0];
+      if (isFeatureSelectable(feature)) {
+        suppressNextMapClickRef.current = true;
+        selectObjectRef.current(String(feature.properties.objectId), String(feature.properties.layerId));
+      }
+    };
+
+    const handleVertexMouseEnter = (event: MapLayerMouseEvent) => {
+      if (currentToolRef.current !== 'move' || dragVertexIndexRef.current !== null) {
+        return;
+      }
+
+      const feature = event.features?.[0];
+      const nextIndex = Number(feature?.properties?.vertexIndex);
+      if (Number.isNaN(nextIndex)) {
+        return;
+      }
+
+      hoverVertexIndexRef.current = nextIndex;
+      setHoverVertexIndex(nextIndex);
+      updateCanvasCursor();
+    };
+
+    const handleVertexMouseLeave = () => {
+      if (dragVertexIndexRef.current !== null) {
+        return;
+      }
+
+      hoverVertexIndexRef.current = null;
+      setHoverVertexIndex(null);
+      updateCanvasCursor();
+    };
+
+    const handleVertexMouseDown = (event: MapLayerMouseEvent) => {
+      if (currentToolRef.current !== 'move') {
+        return;
+      }
+
+      const feature = event.features?.[0];
+      const nextIndex = Number(feature?.properties?.vertexIndex);
+      const baseVertices = getEditableVertices(selectedObjectRef.current);
+      if (Number.isNaN(nextIndex) || !baseVertices) {
+        return;
+      }
+
+      event.preventDefault();
+      suppressNextMapClickRef.current = true;
+      dragVertexIndexRef.current = nextIndex;
+      hoverVertexIndexRef.current = nextIndex;
+      previewVerticesRef.current = baseVertices;
+      setDragVertexIndex(nextIndex);
+      setHoverVertexIndex(nextIndex);
+      setPreviewVertices(baseVertices);
+      map.dragPan.disable();
+      updateCanvasCursor();
+    };
+
     const handleMapClick = (event: MapMouseEvent) => {
+      if (suppressNextMapClickRef.current) {
+        suppressNextMapClickRef.current = false;
+        return;
+      }
+
       if (currentToolRef.current === 'point') {
         const coordinate: Position = [event.lngLat.lng, event.lngLat.lat];
         addObjectToSelectedLayer(createPointObject(coordinate));
@@ -450,6 +611,21 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
     };
 
     const handleMouseMove = (event: MapMouseEvent) => {
+      const activeVertexIndex = dragVertexIndexRef.current;
+      if (activeVertexIndex !== null) {
+        const baseVertices = previewVerticesRef.current ?? getEditableVertices(selectedObjectRef.current);
+        if (!baseVertices) {
+          return;
+        }
+
+        const nextVertices = baseVertices.map((coordinate, index) =>
+          index === activeVertexIndex ? ([event.lngLat.lng, event.lngLat.lat] as Position) : coordinate,
+        );
+        previewVerticesRef.current = nextVertices;
+        setPreviewVertices(nextVertices);
+        return;
+      }
+
       if (
         (currentToolRef.current !== 'polygon' && currentToolRef.current !== 'line') ||
         draftCoordinatesRef.current.length === 0
@@ -461,32 +637,71 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       setHoverCoordinate([event.lngLat.lng, event.lngLat.lat]);
     };
 
+    const handleMouseUp = () => {
+      const activeVertexIndex = dragVertexIndexRef.current;
+      const vertices = previewVerticesRef.current;
+      const object = selectedObjectRef.current;
+      if (activeVertexIndex === null || !vertices || !object) {
+        return;
+      }
+
+      const nextGeometry = buildGeometryFromVertices(object.type, vertices);
+      resetVertexEditing();
+
+      if (nextGeometry) {
+        updateSelectedObjectGeometryRef.current(nextGeometry);
+      }
+    };
+
     const handleMouseOut = () => {
-      setHoverCoordinate(null);
+      if (dragVertexIndexRef.current === null) {
+        setHoverCoordinate(null);
+      }
     };
 
     const handleEmptySelection = () => {
-      if (currentToolRef.current === 'move') {
+      if (suppressNextMapClickRef.current) {
+        suppressNextMapClickRef.current = false;
+        return;
+      }
+
+      if (currentToolRef.current === 'move' && dragVertexIndexRef.current === null) {
         selectObjectRef.current(null, selectedLayerIdRef.current);
       }
     };
 
+    map.on('click', 'polygon-fill', handleObjectSelection);
+    map.on('click', 'polygon-line', handleObjectSelection);
+    map.on('click', 'line-string', handleObjectSelection);
+    map.on('click', 'points', handleObjectSelection);
+    map.on('mouseenter', 'edit-vertex-hit', handleVertexMouseEnter);
+    map.on('mouseleave', 'edit-vertex-hit', handleVertexMouseLeave);
+    map.on('mousedown', 'edit-vertex-hit', handleVertexMouseDown);
     map.on('click', handleMapClick);
     map.on('dblclick', handleDoubleClick);
     map.on('mousemove', handleMouseMove);
+    map.on('mouseup', handleMouseUp);
     map.on('mouseout', handleMouseOut);
     map.on('click', handleEmptySelection);
 
+    onMapReadyRef.current(map);
+    mapRef.current = map;
+    updateCanvasCursor();
+
     return () => {
-      map.off('click', handleMapClick);
-      map.off('dblclick', handleDoubleClick);
-      map.off('mousemove', handleMouseMove);
-      map.off('mouseout', handleMouseOut);
-      map.off('click', handleEmptySelection);
       map.off('click', 'polygon-fill', handleObjectSelection);
       map.off('click', 'polygon-line', handleObjectSelection);
       map.off('click', 'line-string', handleObjectSelection);
       map.off('click', 'points', handleObjectSelection);
+      map.off('mouseenter', 'edit-vertex-hit', handleVertexMouseEnter);
+      map.off('mouseleave', 'edit-vertex-hit', handleVertexMouseLeave);
+      map.off('mousedown', 'edit-vertex-hit', handleVertexMouseDown);
+      map.off('click', handleMapClick);
+      map.off('dblclick', handleDoubleClick);
+      map.off('mousemove', handleMouseMove);
+      map.off('mouseup', handleMouseUp);
+      map.off('mouseout', handleMouseOut);
+      map.off('click', handleEmptySelection);
       map.getCanvasContainer().style.cursor = '';
       map.remove();
       mapRef.current = null;
@@ -523,11 +738,26 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       return;
     }
 
-    map.getCanvasContainer().style.cursor = getCursorForState(currentTool, draggingRef.current);
+    const source = map.getSource(EDIT_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+    if (source) {
+      source.setData(editGeoJson);
+    }
+  }, [editGeoJson]);
 
-    if (currentTool === 'polygon') {
-      map.doubleClickZoom.disable();
-    } else if (currentTool === 'line') {
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) {
+      return;
+    }
+
+    map.getCanvasContainer().style.cursor = getCursorForState({
+      tool: currentTool,
+      isMapDragging: mapDraggingRef.current,
+      isVertexHovering: hoverVertexIndex !== null,
+      isVertexDragging: dragVertexIndex !== null,
+    });
+
+    if (currentTool === 'polygon' || currentTool === 'line') {
       map.doubleClickZoom.disable();
     } else {
       map.doubleClickZoom.enable();
@@ -535,7 +765,38 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       setDraftCoordinates([]);
       setHoverCoordinate(null);
     }
-  }, [currentTool]);
+
+    if (currentTool !== 'move') {
+      hoverVertexIndexRef.current = null;
+      dragVertexIndexRef.current = null;
+      previewVerticesRef.current = null;
+      setHoverVertexIndex(null);
+      setDragVertexIndex(null);
+      setPreviewVertices(null);
+      if (!map.dragPan.isEnabled()) {
+        map.dragPan.enable();
+      }
+    }
+  }, [currentTool, dragVertexIndex, hoverVertexIndex]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) {
+      return;
+    }
+
+    if (currentTool !== 'move' || selectedObject?.type === 'point') {
+      hoverVertexIndexRef.current = null;
+      dragVertexIndexRef.current = null;
+      previewVerticesRef.current = null;
+      setHoverVertexIndex(null);
+      setDragVertexIndex(null);
+      setPreviewVertices(null);
+      if (!map.dragPan.isEnabled()) {
+        map.dragPan.enable();
+      }
+    }
+  }, [currentTool, selectedObject?.id, selectedObject?.type]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -562,12 +823,12 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
         className="h-full w-full"
       />
       {currentTool === 'polygon' && (
-        <div className="pointer-events-none absolute left-3 top-3 rounded-md bg-black/50 px-3 py-2 text-xs text-white">
+        <div className="pointer-events-none absolute left-3 top-3 rounded-md border border-white/10 bg-slate-950/60 px-3 py-2 text-xs text-white shadow-panel">
           Click to add vertices. Double-click or click the first point to finish.
         </div>
       )}
       {currentTool === 'line' && (
-        <div className="pointer-events-none absolute left-3 top-3 rounded-md bg-black/50 px-3 py-2 text-xs text-white">
+        <div className="pointer-events-none absolute left-3 top-3 rounded-md border border-white/10 bg-slate-950/60 px-3 py-2 text-xs text-white shadow-panel">
           Click to add points. Double-click to finish the line.
         </div>
       )}

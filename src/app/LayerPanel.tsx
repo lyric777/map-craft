@@ -26,12 +26,12 @@ export function LayerPanel({
   return (
     <section className="flex h-full flex-col rounded-md border border-border bg-panel px-3 py-3 shadow-panel">
       <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2 text-sm font-medium text-white">
+        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
           <Layers2 size={16} />
           Layers
         </div>
         <button
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-panelAlt text-slate-300 hover:border-accent hover:text-white"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-panelAlt text-muted hover:border-accent hover:text-foreground"
           onClick={onAddLayer}
           title="Add layer"
           type="button"
@@ -51,18 +51,18 @@ export function LayerPanel({
             >
               <div className="flex items-center gap-2">
                 <button
-                  className="flex-1 text-left text-sm text-white"
+                  className="flex-1 text-left text-sm text-foreground"
                   onClick={() => onSelectLayer(layer.id)}
                   type="button"
                 >
                   <input
-                    className="w-full bg-transparent text-sm text-white outline-none"
+                    className="w-full bg-transparent text-sm text-foreground outline-none"
                     onBlur={(event) => onRenameLayer(layer.id, event.target.value.trim())}
                     defaultValue={layer.name}
                   />
                 </button>
                 <button
-                  className="text-slate-300 hover:text-white"
+                  className="text-muted hover:text-foreground"
                   onClick={() => onToggleLayer(layer.id)}
                   title={layer.visible ? 'Hide layer' : 'Show layer'}
                   type="button"
@@ -70,7 +70,7 @@ export function LayerPanel({
                   {layer.visible ? <Eye size={16} /> : <EyeOff size={16} />}
                 </button>
                 <button
-                  className="text-slate-300 hover:text-white disabled:opacity-30"
+                  className="text-muted hover:text-foreground disabled:opacity-30"
                   disabled={index === 0}
                   onClick={() => onReorderLayer(layer.id, 'up')}
                   title="Move layer up"
@@ -79,7 +79,7 @@ export function LayerPanel({
                   <ArrowUp size={16} />
                 </button>
                 <button
-                  className="text-slate-300 hover:text-white disabled:opacity-30"
+                  className="text-muted hover:text-foreground disabled:opacity-30"
                   disabled={index === layers.length - 1}
                   onClick={() => onReorderLayer(layer.id, 'down')}
                   title="Move layer down"
@@ -88,7 +88,7 @@ export function LayerPanel({
                   <ArrowDown size={16} />
                 </button>
               </div>
-              <div className="mt-2 text-xs text-slate-400">
+              <div className="mt-2 text-xs text-subtle">
                 {layer.objects.length} objects
                 {active && selectedObjectId ? ' · selection active' : ''}
               </div>

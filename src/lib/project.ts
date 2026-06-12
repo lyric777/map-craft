@@ -1,16 +1,24 @@
-import type { Feature, FeatureCollection, Geometry, Polygon, Position } from 'geojson';
-
-const EMPTY_FEATURE_COLLECTION: FeatureCollection<Geometry> = {
-  type: 'FeatureCollection',
-  features: [],
-};
+import type {
+  Feature,
+  FeatureCollection,
+  Geometry,
+  LineString,
+  Polygon,
+  Position,
+} from 'geojson';
 
 import type {
   MapcraftLayer,
   MapcraftObject,
   MapcraftProject,
   MapcraftViewport,
+  MapObjectType,
 } from '../types/project';
+
+const EMPTY_FEATURE_COLLECTION: FeatureCollection<Geometry> = {
+  type: 'FeatureCollection',
+  features: [],
+};
 
 export const DEFAULT_VIEWPORT: MapcraftViewport = {
   center: [0, 20],
@@ -25,6 +33,10 @@ export const DEFAULT_STYLE = {
 };
 
 const createId = () => crypto.randomUUID();
+
+const cloneCoordinate = (coordinate: Position): Position => [coordinate[0], coordinate[1]];
+
+const cloneCoordinates = (coordinates: Position[]) => coordinates.map(cloneCoordinate);
 
 export const createDefaultLayer = (name = 'Layer 1'): MapcraftLayer => ({
   id: createId(),
@@ -41,6 +53,9 @@ export const createEmptyProject = (): MapcraftProject => ({
 
 export const isPolygonGeometry = (geometry: Geometry): geometry is Polygon =>
   geometry.type === 'Polygon';
+
+export const isLineGeometry = (geometry: Geometry): geometry is LineString =>
+  geometry.type === 'LineString';
 
 export const createPolygonObject = (coordinates: Polygon['coordinates'][0]): MapcraftObject => ({
   id: createId(),
@@ -81,9 +96,61 @@ export const duplicateObject = (object: MapcraftObject): MapcraftObject => {
   return next;
 };
 
+export const getEditableVertices = (object: MapcraftObject | null): Position[] | null => {
+  if (!object) {
+    return null;
+  }
+
+  if (object.type === 'line' && isLineGeometry(object.geometry)) {
+    return cloneCoordinates(object.geometry.coordinates);
+  }
+
+  if (object.type === 'polygon' && isPolygonGeometry(object.geometry)) {
+    const ring = object.geometry.coordinates[0] ?? [];
+    if (ring.length === 0) {
+      return [];
+    }
+
+    return cloneCoordinates(ring.slice(0, -1));
+  }
+
+  return null;
+};
+
+export const buildGeometryFromVertices = (
+  objectType: MapObjectType,
+  vertices: Position[],
+): Geometry | null => {
+  if (objectType === 'line') {
+    if (vertices.length < 2) {
+      return null;
+    }
+
+    return {
+      type: 'LineString',
+      coordinates: cloneCoordinates(vertices),
+    };
+  }
+
+  if (objectType === 'polygon') {
+    if (vertices.length < 3) {
+      return null;
+    }
+
+    const closedRing = [...cloneCoordinates(vertices), cloneCoordinate(vertices[0])];
+    return {
+      type: 'Polygon',
+      coordinates: [closedRing],
+    };
+  }
+
+  return null;
+};
+
 export const projectToFeatureCollection = (
   layers: MapcraftLayer[],
   selectedObjectId: string | null,
+  geometryOverrides: Record<string, Geometry> = {},
 ): FeatureCollection<Geometry> => {
   const features: Feature<Geometry>[] = [];
 
@@ -96,7 +163,7 @@ export const projectToFeatureCollection = (
       features.push({
         type: 'Feature',
         id: object.id,
-        geometry: object.geometry,
+        geometry: geometryOverrides[object.id] ?? object.geometry,
         properties: {
           objectId: object.id,
           layerId: layer.id,
@@ -114,6 +181,32 @@ export const projectToFeatureCollection = (
   return {
     type: 'FeatureCollection',
     features,
+  };
+};
+
+export const vertexHandlesToFeatureCollection = (
+  vertices: Position[],
+  hoveredIndex: number | null,
+  draggingIndex: number | null,
+): FeatureCollection<Geometry> => {
+  if (vertices.length === 0) {
+    return EMPTY_FEATURE_COLLECTION;
+  }
+
+  return {
+    type: 'FeatureCollection',
+    features: vertices.map((coordinate, index) => ({
+      type: 'Feature',
+      geometry: {
+        type: 'Point',
+        coordinates: cloneCoordinate(coordinate),
+      },
+      properties: {
+        vertexIndex: index,
+        isHover: hoveredIndex === index,
+        isDragging: draggingIndex === index,
+      },
+    })),
   };
 };
 

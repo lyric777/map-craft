@@ -11,10 +11,23 @@ import { downloadBlob, downloadProjectFile, readProjectFile } from './project-io
 import { useEditorStore, selectActiveLayer, selectActiveObject } from './state/editorStore';
 import { TOOL_SHORTCUTS } from './tools/tools';
 
+type ThemeMode = 'dark' | 'light';
+const THEME_STORAGE_KEY = 'mapcraft-theme';
+
+const getInitialTheme = (): ThemeMode => {
+  if (typeof window === 'undefined') {
+    return 'dark';
+  }
+
+  const saved = window.localStorage.getItem(THEME_STORAGE_KEY);
+  return saved === 'light' ? 'light' : 'dark';
+};
+
 function App() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [status, setStatus] = useState('Polygon tool ready.');
+  const [themeMode, setThemeMode] = useState<ThemeMode>(getInitialTheme);
   const state = useEditorStore(
     useShallow((store) => ({
       project: store.project,
@@ -47,6 +60,12 @@ function App() {
     () => selectActiveObject(state.project.layers, state.selectedLayerId, state.selectedObjectId),
     [state.project.layers, state.selectedLayerId, state.selectedObjectId],
   );
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = themeMode;
+    document.body.dataset.theme = themeMode;
+    window.localStorage.setItem(THEME_STORAGE_KEY, themeMode);
+  }, [themeMode]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -134,7 +153,11 @@ function App() {
   };
 
   return (
-    <div className="flex h-screen min-h-screen flex-col bg-surface text-slate-100">
+    <div
+      className="mapcraft-shell flex h-screen min-h-screen flex-col bg-surface text-foreground transition-colors"
+      data-testid="app-shell"
+      data-theme={themeMode}
+    >
       <TopBar
         canRedo={state.historyFuture.length > 0}
         canUndo={state.historyPast.length > 0}
@@ -149,10 +172,15 @@ function App() {
           setStatus('Redo applied.');
         }}
         onSave={handleSave}
+        onToggleTheme={() => {
+          setThemeMode((current) => (current === 'dark' ? 'light' : 'dark'));
+          setStatus(`Switched to ${themeMode === 'dark' ? 'light' : 'dark'} theme.`);
+        }}
         onUndo={() => {
           state.undo();
           setStatus('Undo applied.');
         }}
+        themeMode={themeMode}
       />
 
       <input
@@ -192,21 +220,21 @@ function App() {
               selectedObjectId={state.selectedObjectId}
             />
             <section className="rounded-md border border-border bg-panel px-4 py-3 shadow-panel">
-              <div className="text-sm font-medium text-white">Session</div>
-              <div className="mt-2 text-sm text-slate-300">{status}</div>
-              <div className="mt-6 grid grid-cols-2 gap-4 text-sm text-slate-400">
+              <div className="text-sm font-medium text-foreground">Session</div>
+              <div className="mt-2 text-sm text-muted">{status}</div>
+              <div className="mt-6 grid grid-cols-2 gap-4 text-sm text-subtle">
                 <div>
                   <div className="text-xs uppercase tracking-wide">Active Layer</div>
-                  <div className="mt-1 text-white">{activeLayer?.name ?? 'None'}</div>
+                  <div className="mt-1 text-foreground">{activeLayer?.name ?? 'None'}</div>
                 </div>
                 <div>
                   <div className="text-xs uppercase tracking-wide">Objects</div>
-                  <div className="mt-1 text-white">
+                  <div className="mt-1 text-foreground">
                     {state.project.layers.reduce((sum, layer) => sum + layer.objects.length, 0)}
                   </div>
                 </div>
               </div>
-              <div className="mt-6 text-xs text-slate-400">
+              <div className="mt-6 text-xs text-subtle">
                 Shortcuts: `V` Move, `P` Point, `L` Line, `B` Polygon, `Delete` Remove, `Ctrl/Cmd+D`
                 Duplicate, `Ctrl/Cmd+Z` Undo, `Ctrl/Cmd+Shift+Z` Redo.
               </div>

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import App from '../App';
@@ -22,5 +22,16 @@ describe('App', () => {
     expect(screen.getByText('Inspector')).toBeInTheDocument();
     expect(screen.getByText('Layers')).toBeInTheDocument();
     expect(screen.getByTestId('map-canvas')).toBeInTheDocument();
+  });
+
+  it('toggles the theme runtime state', async () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByLabelText(/switch to light theme/i));
+
+    await waitFor(() => {
+      expect(document.documentElement.dataset.theme).toBe('light');
+      expect(screen.getByTestId('app-shell')).toHaveAttribute('data-theme', 'light');
+    });
   });
 });

@@ -1,4 +1,6 @@
-import { Download, FilePlus2, FolderOpen, Redo2, Save, Undo2 } from 'lucide-react';
+import { Download, FilePlus2, FolderOpen, Moon, Redo2, Save, Sun, Undo2 } from 'lucide-react';
+
+type ThemeMode = 'dark' | 'light';
 
 interface TopBarProps {
   onNew: () => void;
@@ -9,10 +11,12 @@ interface TopBarProps {
   onRedo: () => void;
   canUndo: boolean;
   canRedo: boolean;
+  themeMode: ThemeMode;
+  onToggleTheme: () => void;
 }
 
 const buttonClassName =
-  'inline-flex items-center gap-2 rounded-md border border-border bg-panelAlt px-3 py-2 text-sm text-slate-100 transition hover:border-accent hover:text-white disabled:cursor-not-allowed disabled:opacity-50';
+  'inline-flex items-center gap-2 rounded-md border border-border bg-panelAlt px-3 py-2 text-sm text-foreground transition hover:border-accent disabled:cursor-not-allowed disabled:opacity-50';
 
 export function TopBar({
   onNew,
@@ -23,14 +27,24 @@ export function TopBar({
   onRedo,
   canUndo,
   canRedo,
+  themeMode,
+  onToggleTheme,
 }: TopBarProps) {
   return (
     <header className="flex items-center justify-between border-b border-border bg-panel px-4 py-3">
       <div>
-        <h1 className="text-lg font-semibold text-white">MapCraft</h1>
-        <p className="text-xs text-slate-400">Visual map creation studio</p>
+        <h1 className="text-lg font-semibold text-foreground">MapCraft</h1>
+        <p className="text-xs text-subtle">Visual map creation studio</p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
+        <button
+          aria-label={`Switch to ${themeMode === 'dark' ? 'light' : 'dark'} theme`}
+          className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-border bg-panelAlt text-foreground transition hover:border-accent"
+          onClick={onToggleTheme}
+          type="button"
+        >
+          {themeMode === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+        </button>
         <button className={buttonClassName} onClick={onNew} type="button">
           <FilePlus2 size={16} />
           New

@@ -52,6 +52,53 @@ describe('editor store', () => {
     expect(object?.style.opacity).toBe(0.6);
   });
 
+  it('updates selected line geometry and supports undo/redo', () => {
+    const store = useEditorStore.getState();
+    store.addObjectToSelectedLayer(
+      createLineObject([
+        [0, 0],
+        [1, 1],
+      ]),
+    );
+
+    store.updateSelectedObjectGeometry({
+      type: 'LineString',
+      coordinates: [
+        [0, 0],
+        [2, 3],
+      ],
+    });
+
+    let object = useEditorStore.getState().project.layers[0]?.objects[0];
+    expect(object?.geometry).toEqual({
+      type: 'LineString',
+      coordinates: [
+        [0, 0],
+        [2, 3],
+      ],
+    });
+
+    useEditorStore.getState().undo();
+    object = useEditorStore.getState().project.layers[0]?.objects[0];
+    expect(object?.geometry).toEqual({
+      type: 'LineString',
+      coordinates: [
+        [0, 0],
+        [1, 1],
+      ],
+    });
+
+    useEditorStore.getState().redo();
+    object = useEditorStore.getState().project.layers[0]?.objects[0];
+    expect(object?.geometry).toEqual({
+      type: 'LineString',
+      coordinates: [
+        [0, 0],
+        [2, 3],
+      ],
+    });
+  });
+
   it('supports point and line objects', () => {
     const store = useEditorStore.getState();
     store.addObjectToSelectedLayer(createPointObject([12, 34]));

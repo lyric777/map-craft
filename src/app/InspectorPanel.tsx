@@ -9,7 +9,7 @@ interface InspectorPanelProps {
   onDuplicate: () => void;
 }
 
-const labelClassName = 'mb-1 block text-xs font-medium uppercase tracking-wide text-slate-400';
+const labelClassName = 'mb-1 block text-xs font-medium uppercase tracking-wide text-subtle';
 
 export function InspectorPanel({
   object,
@@ -20,21 +20,21 @@ export function InspectorPanel({
   return (
     <aside className="flex h-full flex-col rounded-md border border-border bg-panel px-4 py-4 shadow-panel">
       <div className="mb-4">
-        <h2 className="text-sm font-semibold text-white">Inspector</h2>
-        <p className="mt-1 text-xs text-slate-400">
+        <h2 className="text-sm font-semibold text-foreground">Inspector</h2>
+        <p className="mt-1 text-xs text-subtle">
           {object ? 'Selected object style updates instantly on the map.' : 'Select a shape to edit.'}
         </p>
       </div>
 
       {!object ? (
-        <div className="rounded-md border border-dashed border-border px-4 py-6 text-sm text-slate-400">
+        <div className="rounded-md border border-dashed border-border px-4 py-6 text-sm text-subtle">
           No object selected.
         </div>
       ) : (
         <div className="space-y-4">
-          <div className="rounded-md border border-border bg-panelAlt px-3 py-3 text-xs text-slate-300">
-            <div className="font-medium text-white">{object.type}</div>
-            <div className="mt-1 break-all text-slate-400">{object.id}</div>
+          <div className="rounded-md border border-border bg-panelAlt px-3 py-3 text-xs text-muted">
+            <div className="font-medium text-foreground">{object.type}</div>
+            <div className="mt-1 break-all text-subtle">{object.id}</div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -69,7 +69,7 @@ export function InspectorPanel({
               value={object.style.strokeWidth}
               onChange={(event) => onStyleChange({ strokeWidth: Number(event.target.value) })}
             />
-            <div className="mt-1 text-xs text-slate-400">{object.style.strokeWidth}px</div>
+            <div className="mt-1 text-xs text-subtle">{object.style.strokeWidth}px</div>
           </label>
 
           <label className="block">
@@ -83,12 +83,12 @@ export function InspectorPanel({
               value={object.style.opacity}
               onChange={(event) => onStyleChange({ opacity: Number(event.target.value) })}
             />
-            <div className="mt-1 text-xs text-slate-400">{Math.round(object.style.opacity * 100)}%</div>
+            <div className="mt-1 text-xs text-subtle">{Math.round(object.style.opacity * 100)}%</div>
           </label>
 
           <div className="grid grid-cols-2 gap-3">
             <button
-              className="inline-flex items-center justify-center gap-2 rounded-md border border-border bg-panelAlt px-3 py-2 text-sm text-white hover:border-accent"
+              className="inline-flex items-center justify-center gap-2 rounded-md border border-border bg-panelAlt px-3 py-2 text-sm text-foreground hover:border-accent"
               onClick={onDuplicate}
               type="button"
             >
@@ -96,7 +96,7 @@ export function InspectorPanel({
               Duplicate
             </button>
             <button
-              className="inline-flex items-center justify-center gap-2 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200 hover:border-red-400"
+              className="inline-flex items-center justify-center gap-2 rounded-md border border-dangerBorder bg-dangerSoft px-3 py-2 text-sm text-danger hover:border-danger"
               onClick={onDelete}
               type="button"
             >

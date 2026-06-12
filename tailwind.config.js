@@ -4,14 +4,21 @@ export default {
   theme: {
     extend: {
       colors: {
-        surface: '#101317',
-        panel: '#171c22',
-        panelAlt: '#1d242d',
-        border: '#2d3744',
-        accent: '#45c4ff',
+        surface: 'var(--color-surface)',
+        panel: 'var(--color-panel)',
+        panelAlt: 'var(--color-panel-alt)',
+        border: 'var(--color-border)',
+        accent: 'var(--color-accent)',
+        foreground: 'var(--color-foreground)',
+        muted: 'var(--color-muted)',
+        subtle: 'var(--color-subtle)',
+        danger: 'var(--color-danger)',
+        dangerSoft: 'var(--color-danger-soft)',
+        dangerBorder: 'var(--color-danger-border)',
+        overlay: 'var(--color-overlay)',
       },
       boxShadow: {
-        panel: '0 8px 24px rgba(0, 0, 0, 0.24)',
+        panel: 'var(--shadow-panel)',
       },
     },
   },

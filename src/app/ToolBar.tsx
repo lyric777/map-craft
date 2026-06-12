@@ -36,7 +36,7 @@ export function ToolBar({ currentTool, onSelectTool }: ToolBarProps) {
               className={`group relative inline-flex h-11 w-11 items-center justify-center rounded-md border transition ${
                 active
                   ? 'border-accent bg-accent/15 text-accent'
-                  : 'border-border bg-panelAlt text-slate-300 hover:border-accent hover:text-white'
+                  : 'border-border bg-panelAlt text-muted hover:border-accent hover:text-foreground'
               } ${disabled ? 'opacity-45' : ''} cursor-default`}
               disabled={disabled}
               onClick={() => onSelectTool(id)}
@@ -47,7 +47,7 @@ export function ToolBar({ currentTool, onSelectTool }: ToolBarProps) {
               <Icon size={18} />
             </button>
             {hoveredTool === id && (
-              <div className="pointer-events-none absolute left-[calc(100%+10px)] top-1/2 z-20 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-surface px-2 py-1 text-xs text-slate-100 shadow-panel">
+              <div className="pointer-events-none absolute left-[calc(100%+10px)] top-1/2 z-20 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-surface px-2 py-1 text-xs text-foreground shadow-panel">
                 {tooltipText}
               </div>
             )}
