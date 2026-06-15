@@ -147,6 +147,40 @@ export const buildGeometryFromVertices = (
   return null;
 };
 
+export const translateGeometry = (
+  geometry: Geometry,
+  deltaLng: number,
+  deltaLat: number,
+): Geometry | null => {
+  if (geometry.type === 'Point') {
+    return {
+      type: 'Point',
+      coordinates: [geometry.coordinates[0] + deltaLng, geometry.coordinates[1] + deltaLat],
+    };
+  }
+
+  if (geometry.type === 'LineString') {
+    return {
+      type: 'LineString',
+      coordinates: geometry.coordinates.map((coordinate) => [
+        coordinate[0] + deltaLng,
+        coordinate[1] + deltaLat,
+      ]),
+    };
+  }
+
+  if (geometry.type === 'Polygon') {
+    return {
+      type: 'Polygon',
+      coordinates: geometry.coordinates.map((ring) =>
+        ring.map((coordinate) => [coordinate[0] + deltaLng, coordinate[1] + deltaLat]),
+      ),
+    };
+  }
+
+  return null;
+};
+
 export const projectToFeatureCollection = (
   layers: MapcraftLayer[],
   selectedObjectId: string | null,

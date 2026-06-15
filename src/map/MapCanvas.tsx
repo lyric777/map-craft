@@ -15,6 +15,7 @@ import {
   draftPolygonToFeatureCollection,
   getEditableVertices,
   projectToFeatureCollection,
+  translateGeometry,
   vertexHandlesToFeatureCollection,
 } from '../lib/project';
 import { selectActiveObject, useEditorStore } from '../state/editorStore';
@@ -46,6 +47,7 @@ interface MapCanvasProps {
 const OBJECTS_SOURCE_ID = 'objects';
 const DRAFT_SOURCE_ID = 'draft';
 const EDIT_SOURCE_ID = 'edit-vertices';
+const OBJECT_INTERACTIVE_LAYER_IDS = ['polygon-fill', 'polygon-line', 'line-string', 'points'] as const;
 const EMPTY_GEOJSON: FeatureCollection<Geometry> = {
   type: 'FeatureCollection',
   features: [],
@@ -92,6 +94,9 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
   const [hoverVertexIndex, setHoverVertexIndex] = useState<number | null>(null);
   const [dragVertexIndex, setDragVertexIndex] = useState<number | null>(null);
   const [previewVertices, setPreviewVertices] = useState<Position[] | null>(null);
+  const [hoverObjectId, setHoverObjectId] = useState<string | null>(null);
+  const [dragObjectId, setDragObjectId] = useState<string | null>(null);
+  const [previewObjectGeometry, setPreviewObjectGeometry] = useState<Geometry | null>(null);
   const {
     currentTool,
     project,
@@ -119,12 +124,12 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
   );
 
   const selectedEditableVertices = useMemo(() => {
-    if (currentTool !== 'move') {
+    if (currentTool !== 'move' || dragObjectId !== null) {
       return [];
     }
 
     return previewVertices ?? getEditableVertices(selectedObject) ?? [];
-  }, [currentTool, previewVertices, selectedObject]);
+  }, [currentTool, dragObjectId, previewVertices, selectedObject]);
 
   const previewGeometry = useMemo(() => {
     if (!selectedObject || !previewVertices) {
@@ -134,14 +139,23 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
     return buildGeometryFromVertices(selectedObject.type, previewVertices);
   }, [previewVertices, selectedObject]);
 
+  const geometryOverrides = useMemo(() => {
+    const nextOverrides: Record<string, Geometry> = {};
+
+    if (previewGeometry && selectedObjectId) {
+      nextOverrides[selectedObjectId] = previewGeometry;
+    }
+
+    if (previewObjectGeometry && dragObjectId) {
+      nextOverrides[dragObjectId] = previewObjectGeometry;
+    }
+
+    return nextOverrides;
+  }, [dragObjectId, previewGeometry, previewObjectGeometry, selectedObjectId]);
+
   const objectsGeoJson = useMemo(
-    () =>
-      projectToFeatureCollection(
-        project.layers,
-        selectedObjectId,
-        previewGeometry && selectedObjectId ? { [selectedObjectId]: previewGeometry } : {},
-      ),
-    [previewGeometry, project.layers, selectedObjectId],
+    () => projectToFeatureCollection(project.layers, selectedObjectId, geometryOverrides),
+    [geometryOverrides, project.layers, selectedObjectId],
   );
 
   const closeToStart = useMemo(() => {
@@ -195,9 +209,14 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
   const hoverVertexIndexRef = useRef<number | null>(hoverVertexIndex);
   const dragVertexIndexRef = useRef<number | null>(dragVertexIndex);
   const previewVerticesRef = useRef<Position[] | null>(previewVertices);
+  const hoverObjectIdRef = useRef<string | null>(hoverObjectId);
+  const dragObjectIdRef = useRef<string | null>(dragObjectId);
+  const previewObjectGeometryRef = useRef<Geometry | null>(previewObjectGeometry);
+  const objectDragStartRef = useRef<Position | null>(null);
+  const objectDragGeometryRef = useRef<Geometry | null>(null);
+  const dragMovedRef = useRef(false);
   const closeToStartRef = useRef(closeToStart);
   const mapDraggingRef = useRef(false);
-  const suppressNextMapClickRef = useRef(false);
 
   useEffect(() => {
     currentToolRef.current = currentTool;
@@ -214,17 +233,23 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
     hoverVertexIndexRef.current = hoverVertexIndex;
     dragVertexIndexRef.current = dragVertexIndex;
     previewVerticesRef.current = previewVertices;
+    hoverObjectIdRef.current = hoverObjectId;
+    dragObjectIdRef.current = dragObjectId;
+    previewObjectGeometryRef.current = previewObjectGeometry;
     closeToStartRef.current = closeToStart;
   }, [
     closeToStart,
     currentTool,
     draftCoordinates,
     draftGeoJson,
+    dragObjectId,
     dragVertexIndex,
     editGeoJson,
+    hoverObjectId,
     hoverVertexIndex,
     onMapReady,
     objectsGeoJson,
+    previewObjectGeometry,
     previewVertices,
     selectObject,
     selectedLayerId,
@@ -255,7 +280,10 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
         tool: currentToolRef.current,
         isMapDragging: mapDraggingRef.current,
         isVertexHovering: hoverVertexIndexRef.current !== null,
-        isVertexDragging: dragVertexIndexRef.current !== null,
+        isVertexDragging:
+          dragVertexIndexRef.current !== null ||
+          dragObjectIdRef.current !== null ||
+          hoverObjectIdRef.current !== null,
       });
     };
 
@@ -263,9 +291,18 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       dragVertexIndexRef.current = null;
       hoverVertexIndexRef.current = null;
       previewVerticesRef.current = null;
+      dragObjectIdRef.current = null;
+      hoverObjectIdRef.current = null;
+      previewObjectGeometryRef.current = null;
+      objectDragStartRef.current = null;
+      objectDragGeometryRef.current = null;
+      dragMovedRef.current = false;
       setDragVertexIndex(null);
       setHoverVertexIndex(null);
       setPreviewVertices(null);
+      setDragObjectId(null);
+      setHoverObjectId(null);
+      setPreviewObjectGeometry(null);
       if (!map.dragPan.isEnabled()) {
         map.dragPan.enable();
       }
@@ -506,16 +543,64 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       setHoverCoordinate(null);
     };
 
-    const handleObjectSelection = (event: MapLayerMouseEvent) => {
-      if (currentToolRef.current !== 'move') {
+    const handleObjectMouseEnter = (event: MapLayerMouseEvent) => {
+      if (
+        currentToolRef.current !== 'move' ||
+        dragVertexIndexRef.current !== null ||
+        dragObjectIdRef.current !== null
+      ) {
         return;
       }
 
       const feature = event.features?.[0];
-      if (isFeatureSelectable(feature)) {
-        suppressNextMapClickRef.current = true;
-        selectObjectRef.current(String(feature.properties.objectId), String(feature.properties.layerId));
+      if (!isFeatureSelectable(feature)) {
+        return;
       }
+
+      if (String(feature.properties.objectId) !== selectedObjectRef.current?.id) {
+        return;
+      }
+
+      hoverObjectIdRef.current = String(feature.properties.objectId);
+      setHoverObjectId(String(feature.properties.objectId));
+      updateCanvasCursor();
+    };
+
+    const handleObjectMouseLeave = () => {
+      if (dragObjectIdRef.current !== null || dragVertexIndexRef.current !== null) {
+        return;
+      }
+
+      hoverObjectIdRef.current = null;
+      setHoverObjectId(null);
+      updateCanvasCursor();
+    };
+
+    const handleObjectMouseDown = (event: MapLayerMouseEvent) => {
+      if (currentToolRef.current !== 'move' || dragVertexIndexRef.current !== null) {
+        return;
+      }
+
+      const feature = event.features?.[0];
+      if (!isFeatureSelectable(feature)) {
+        return;
+      }
+
+      const objectId = String(feature.properties.objectId);
+      if (objectId !== selectedObjectRef.current?.id || !selectedObjectRef.current) {
+        return;
+      }
+
+      event.preventDefault();
+      dragObjectIdRef.current = objectId;
+      hoverObjectIdRef.current = objectId;
+      objectDragStartRef.current = [event.lngLat.lng, event.lngLat.lat];
+      objectDragGeometryRef.current = structuredClone(selectedObjectRef.current.geometry);
+      dragMovedRef.current = false;
+      setDragObjectId(objectId);
+      setHoverObjectId(objectId);
+      map.dragPan.disable();
+      updateCanvasCursor();
     };
 
     const handleVertexMouseEnter = (event: MapLayerMouseEvent) => {
@@ -557,20 +642,34 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       }
 
       event.preventDefault();
-      suppressNextMapClickRef.current = true;
       dragVertexIndexRef.current = nextIndex;
       hoverVertexIndexRef.current = nextIndex;
+      hoverObjectIdRef.current = null;
       previewVerticesRef.current = baseVertices;
+      dragMovedRef.current = false;
       setDragVertexIndex(nextIndex);
       setHoverVertexIndex(nextIndex);
+      setHoverObjectId(null);
       setPreviewVertices(baseVertices);
       map.dragPan.disable();
       updateCanvasCursor();
     };
 
     const handleMapClick = (event: MapMouseEvent) => {
-      if (suppressNextMapClickRef.current) {
-        suppressNextMapClickRef.current = false;
+      if (currentToolRef.current === 'move') {
+        const interactiveFeatures = map.queryRenderedFeatures(event.point, {
+          layers: [...OBJECT_INTERACTIVE_LAYER_IDS],
+        });
+
+        const selectableFeature = interactiveFeatures.find(isFeatureSelectable);
+        if (selectableFeature) {
+          selectObjectRef.current(
+            String(selectableFeature.properties.objectId),
+            String(selectableFeature.properties.layerId),
+          );
+        } else {
+          selectObjectRef.current(null, selectedLayerIdRef.current);
+        }
         return;
       }
 
@@ -618,11 +717,29 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
           return;
         }
 
+        dragMovedRef.current = true;
         const nextVertices = baseVertices.map((coordinate, index) =>
           index === activeVertexIndex ? ([event.lngLat.lng, event.lngLat.lat] as Position) : coordinate,
         );
         previewVerticesRef.current = nextVertices;
         setPreviewVertices(nextVertices);
+        return;
+      }
+
+      const activeObjectId = dragObjectIdRef.current;
+      const dragOrigin = objectDragStartRef.current;
+      const baseGeometry = objectDragGeometryRef.current;
+      if (activeObjectId && dragOrigin && baseGeometry) {
+        const deltaLng = event.lngLat.lng - dragOrigin[0];
+        const deltaLat = event.lngLat.lat - dragOrigin[1];
+        const nextGeometry = translateGeometry(baseGeometry, deltaLng, deltaLat);
+        if (!nextGeometry) {
+          return;
+        }
+
+        dragMovedRef.current = true;
+        previewObjectGeometryRef.current = nextGeometry;
+        setPreviewObjectGeometry(nextGeometry);
         return;
       }
 
@@ -638,14 +755,27 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
     };
 
     const handleMouseUp = () => {
-      const activeVertexIndex = dragVertexIndexRef.current;
-      const vertices = previewVerticesRef.current;
-      const object = selectedObjectRef.current;
-      if (activeVertexIndex === null || !vertices || !object) {
+      const activeObjectId = dragObjectIdRef.current;
+      if (activeObjectId) {
+        const draggedObjectGeometry = dragMovedRef.current ? previewObjectGeometryRef.current : null;
+        resetVertexEditing();
+        if (draggedObjectGeometry) {
+          updateSelectedObjectGeometryRef.current(draggedObjectGeometry);
+        }
         return;
       }
 
-      const nextGeometry = buildGeometryFromVertices(object.type, vertices);
+      const activeVertexIndex = dragVertexIndexRef.current;
+      const vertices = previewVerticesRef.current;
+      const object = selectedObjectRef.current;
+      if (activeVertexIndex === null) {
+        return;
+      }
+
+      const nextGeometry =
+        dragMovedRef.current && vertices && object
+          ? buildGeometryFromVertices(object.type, vertices)
+          : null;
       resetVertexEditing();
 
       if (nextGeometry) {
@@ -659,21 +789,18 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       }
     };
 
-    const handleEmptySelection = () => {
-      if (suppressNextMapClickRef.current) {
-        suppressNextMapClickRef.current = false;
-        return;
-      }
-
-      if (currentToolRef.current === 'move' && dragVertexIndexRef.current === null) {
-        selectObjectRef.current(null, selectedLayerIdRef.current);
-      }
-    };
-
-    map.on('click', 'polygon-fill', handleObjectSelection);
-    map.on('click', 'polygon-line', handleObjectSelection);
-    map.on('click', 'line-string', handleObjectSelection);
-    map.on('click', 'points', handleObjectSelection);
+    map.on('mouseenter', 'polygon-fill', handleObjectMouseEnter);
+    map.on('mouseenter', 'polygon-line', handleObjectMouseEnter);
+    map.on('mouseenter', 'line-string', handleObjectMouseEnter);
+    map.on('mouseenter', 'points', handleObjectMouseEnter);
+    map.on('mouseleave', 'polygon-fill', handleObjectMouseLeave);
+    map.on('mouseleave', 'polygon-line', handleObjectMouseLeave);
+    map.on('mouseleave', 'line-string', handleObjectMouseLeave);
+    map.on('mouseleave', 'points', handleObjectMouseLeave);
+    map.on('mousedown', 'polygon-fill', handleObjectMouseDown);
+    map.on('mousedown', 'polygon-line', handleObjectMouseDown);
+    map.on('mousedown', 'line-string', handleObjectMouseDown);
+    map.on('mousedown', 'points', handleObjectMouseDown);
     map.on('mouseenter', 'edit-vertex-hit', handleVertexMouseEnter);
     map.on('mouseleave', 'edit-vertex-hit', handleVertexMouseLeave);
     map.on('mousedown', 'edit-vertex-hit', handleVertexMouseDown);
@@ -682,17 +809,24 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
     map.on('mousemove', handleMouseMove);
     map.on('mouseup', handleMouseUp);
     map.on('mouseout', handleMouseOut);
-    map.on('click', handleEmptySelection);
 
     onMapReadyRef.current(map);
     mapRef.current = map;
     updateCanvasCursor();
 
     return () => {
-      map.off('click', 'polygon-fill', handleObjectSelection);
-      map.off('click', 'polygon-line', handleObjectSelection);
-      map.off('click', 'line-string', handleObjectSelection);
-      map.off('click', 'points', handleObjectSelection);
+      map.off('mouseenter', 'polygon-fill', handleObjectMouseEnter);
+      map.off('mouseenter', 'polygon-line', handleObjectMouseEnter);
+      map.off('mouseenter', 'line-string', handleObjectMouseEnter);
+      map.off('mouseenter', 'points', handleObjectMouseEnter);
+      map.off('mouseleave', 'polygon-fill', handleObjectMouseLeave);
+      map.off('mouseleave', 'polygon-line', handleObjectMouseLeave);
+      map.off('mouseleave', 'line-string', handleObjectMouseLeave);
+      map.off('mouseleave', 'points', handleObjectMouseLeave);
+      map.off('mousedown', 'polygon-fill', handleObjectMouseDown);
+      map.off('mousedown', 'polygon-line', handleObjectMouseDown);
+      map.off('mousedown', 'line-string', handleObjectMouseDown);
+      map.off('mousedown', 'points', handleObjectMouseDown);
       map.off('mouseenter', 'edit-vertex-hit', handleVertexMouseEnter);
       map.off('mouseleave', 'edit-vertex-hit', handleVertexMouseLeave);
       map.off('mousedown', 'edit-vertex-hit', handleVertexMouseDown);
@@ -701,7 +835,6 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       map.off('mousemove', handleMouseMove);
       map.off('mouseup', handleMouseUp);
       map.off('mouseout', handleMouseOut);
-      map.off('click', handleEmptySelection);
       map.getCanvasContainer().style.cursor = '';
       map.remove();
       mapRef.current = null;
@@ -754,7 +887,8 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       tool: currentTool,
       isMapDragging: mapDraggingRef.current,
       isVertexHovering: hoverVertexIndex !== null,
-      isVertexDragging: dragVertexIndex !== null,
+      isVertexDragging:
+        dragVertexIndex !== null || dragObjectId !== null || hoverObjectId !== null,
     });
 
     if (currentTool === 'polygon' || currentTool === 'line') {
@@ -770,14 +904,22 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       hoverVertexIndexRef.current = null;
       dragVertexIndexRef.current = null;
       previewVerticesRef.current = null;
+      hoverObjectIdRef.current = null;
+      dragObjectIdRef.current = null;
+      previewObjectGeometryRef.current = null;
+      objectDragStartRef.current = null;
+      objectDragGeometryRef.current = null;
       setHoverVertexIndex(null);
       setDragVertexIndex(null);
       setPreviewVertices(null);
+      setHoverObjectId(null);
+      setDragObjectId(null);
+      setPreviewObjectGeometry(null);
       if (!map.dragPan.isEnabled()) {
         map.dragPan.enable();
       }
     }
-  }, [currentTool, dragVertexIndex, hoverVertexIndex]);
+  }, [currentTool, dragObjectId, dragVertexIndex, hoverObjectId, hoverVertexIndex]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -785,13 +927,21 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       return;
     }
 
-    if (currentTool !== 'move' || selectedObject?.type === 'point') {
+    if (currentTool !== 'move') {
       hoverVertexIndexRef.current = null;
       dragVertexIndexRef.current = null;
       previewVerticesRef.current = null;
+      hoverObjectIdRef.current = null;
+      dragObjectIdRef.current = null;
+      previewObjectGeometryRef.current = null;
+      objectDragStartRef.current = null;
+      objectDragGeometryRef.current = null;
       setHoverVertexIndex(null);
       setDragVertexIndex(null);
       setPreviewVertices(null);
+      setHoverObjectId(null);
+      setDragObjectId(null);
+      setPreviewObjectGeometry(null);
       if (!map.dragPan.isEnabled()) {
         map.dragPan.enable();
       }
