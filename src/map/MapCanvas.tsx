@@ -8,11 +8,13 @@ import { useShallow } from 'zustand/react/shallow';
 
 import {
   buildGeometryFromVertices,
+  createFreeDrawObject,
   createLineObject,
   createPointObject,
   createPolygonObject,
   draftLineToFeatureCollection,
   draftPolygonToFeatureCollection,
+  freeDrawToFeatureCollection,
   getEditableVertices,
   projectToFeatureCollection,
   translateGeometry,
@@ -44,10 +46,25 @@ interface MapCanvasProps {
   onMapReady: (map: maplibregl.Map) => void;
 }
 
+interface ScreenPoint {
+  x: number;
+  y: number;
+}
+
 const OBJECTS_SOURCE_ID = 'objects';
 const DRAFT_SOURCE_ID = 'draft';
 const EDIT_SOURCE_ID = 'edit-vertices';
-const OBJECT_INTERACTIVE_LAYER_IDS = ['polygon-fill', 'polygon-line', 'line-string', 'points'] as const;
+const OBJECT_INTERACTIVE_LAYER_IDS = [
+  'polygon-fill-hit',
+  'polygon-line-hit',
+  'line-string-hit',
+  'points-hit',
+  'polygon-fill',
+  'polygon-line',
+  'line-string',
+  'points',
+] as const;
+const FREE_DRAW_POINT_THRESHOLD = 4;
 const EMPTY_GEOJSON: FeatureCollection<Geometry> = {
   type: 'FeatureCollection',
   features: [],
@@ -61,13 +78,17 @@ const getCursorForState = ({
   isMapDragging,
   isVertexHovering,
   isVertexDragging,
+  isObjectHovering,
+  isObjectDragging,
 }: {
   tool: ToolId;
   isMapDragging: boolean;
   isVertexHovering: boolean;
   isVertexDragging: boolean;
+  isObjectHovering: boolean;
+  isObjectDragging: boolean;
 }) => {
-  if (isMapDragging || isVertexDragging) {
+  if (isMapDragging || isVertexDragging || isObjectDragging) {
     return 'grabbing';
   }
 
@@ -75,11 +96,15 @@ const getCursorForState = ({
     return 'grab';
   }
 
+  if (isObjectHovering && tool === 'move') {
+    return 'grab';
+  }
+
   if (tool === 'point') {
     return 'cell';
   }
 
-  if (tool === 'line' || tool === 'polygon') {
+  if (tool === 'line' || tool === 'polygon' || tool === 'freeDraw') {
     return 'crosshair';
   }
 
@@ -97,6 +122,8 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
   const [hoverObjectId, setHoverObjectId] = useState<string | null>(null);
   const [dragObjectId, setDragObjectId] = useState<string | null>(null);
   const [previewObjectGeometry, setPreviewObjectGeometry] = useState<Geometry | null>(null);
+  const [freeDrawScreenPoints, setFreeDrawScreenPoints] = useState<ScreenPoint[]>([]);
+  const [isFreeDrawing, setIsFreeDrawing] = useState(false);
   const {
     currentTool,
     project,
@@ -154,8 +181,8 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
   }, [dragObjectId, previewGeometry, previewObjectGeometry, selectedObjectId]);
 
   const objectsGeoJson = useMemo(
-    () => projectToFeatureCollection(project.layers, selectedObjectId, geometryOverrides),
-    [geometryOverrides, project.layers, selectedObjectId],
+    () => projectToFeatureCollection(project.layers, selectedObjectId, hoverObjectId, geometryOverrides),
+    [geometryOverrides, hoverObjectId, project.layers, selectedObjectId],
   );
 
   const closeToStart = useMemo(() => {
@@ -170,7 +197,23 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
     return Math.hypot(firstPoint.x - hoverPoint.x, firstPoint.y - hoverPoint.y) < 12;
   }, [currentTool, draftCoordinates, hoverCoordinate]);
 
+  const freeDrawCoordinates = useMemo(() => {
+    const map = mapRef.current;
+    if (!map) {
+      return [];
+    }
+
+    return freeDrawScreenPoints.map(({ x, y }) => {
+      const coordinate = map.unproject([x, y]);
+      return [coordinate.lng, coordinate.lat] as Position;
+    });
+  }, [freeDrawScreenPoints]);
+
   const draftGeoJson = useMemo(() => {
+    if (currentTool === 'freeDraw') {
+      return freeDrawToFeatureCollection(freeDrawCoordinates);
+    }
+
     if (currentTool === 'line') {
       return draftLineToFeatureCollection(
         draftCoordinates as number[][],
@@ -187,7 +230,7 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
     }
 
     return EMPTY_GEOJSON;
-  }, [closeToStart, currentTool, draftCoordinates, hoverCoordinate]);
+  }, [closeToStart, currentTool, draftCoordinates, freeDrawCoordinates, hoverCoordinate]);
 
   const editGeoJson = useMemo(
     () => vertexHandlesToFeatureCollection(selectedEditableVertices, hoverVertexIndex, dragVertexIndex),
@@ -215,6 +258,8 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
   const objectDragStartRef = useRef<Position | null>(null);
   const objectDragGeometryRef = useRef<Geometry | null>(null);
   const dragMovedRef = useRef(false);
+  const freeDrawScreenPointsRef = useRef<ScreenPoint[]>(freeDrawScreenPoints);
+  const isFreeDrawingRef = useRef(isFreeDrawing);
   const closeToStartRef = useRef(closeToStart);
   const mapDraggingRef = useRef(false);
 
@@ -236,6 +281,8 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
     hoverObjectIdRef.current = hoverObjectId;
     dragObjectIdRef.current = dragObjectId;
     previewObjectGeometryRef.current = previewObjectGeometry;
+    freeDrawScreenPointsRef.current = freeDrawScreenPoints;
+    isFreeDrawingRef.current = isFreeDrawing;
     closeToStartRef.current = closeToStart;
   }, [
     closeToStart,
@@ -247,10 +294,12 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
     editGeoJson,
     hoverObjectId,
     hoverVertexIndex,
+    isFreeDrawing,
     onMapReady,
     objectsGeoJson,
     previewObjectGeometry,
     previewVertices,
+    freeDrawScreenPoints,
     selectObject,
     selectedLayerId,
     selectedObject,
@@ -280,10 +329,9 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
         tool: currentToolRef.current,
         isMapDragging: mapDraggingRef.current,
         isVertexHovering: hoverVertexIndexRef.current !== null,
-        isVertexDragging:
-          dragVertexIndexRef.current !== null ||
-          dragObjectIdRef.current !== null ||
-          hoverObjectIdRef.current !== null,
+        isVertexDragging: dragVertexIndexRef.current !== null,
+        isObjectHovering: hoverObjectIdRef.current !== null,
+        isObjectDragging: dragObjectIdRef.current !== null,
       });
     };
 
@@ -303,6 +351,17 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       setDragObjectId(null);
       setHoverObjectId(null);
       setPreviewObjectGeometry(null);
+      if (!map.dragPan.isEnabled()) {
+        map.dragPan.enable();
+      }
+      updateCanvasCursor();
+    };
+
+    const resetFreeDraw = () => {
+      freeDrawScreenPointsRef.current = [];
+      isFreeDrawingRef.current = false;
+      setFreeDrawScreenPoints([]);
+      setIsFreeDrawing(false);
       if (!map.dragPan.isEnabled()) {
         map.dragPan.enable();
       }
@@ -339,6 +398,17 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       });
 
       map.addLayer({
+        id: 'polygon-fill-hit',
+        type: 'fill',
+        source: OBJECTS_SOURCE_ID,
+        filter: ['==', ['geometry-type'], 'Polygon'],
+        paint: {
+          'fill-color': '#000000',
+          'fill-opacity': 0,
+        },
+      });
+
+      map.addLayer({
         id: 'polygon-line',
         type: 'line',
         source: OBJECTS_SOURCE_ID,
@@ -348,14 +418,30 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
             'case',
             ['boolean', ['get', 'isSelected'], false],
             '#ffd166',
+            ['boolean', ['get', 'isHovered'], false],
+            '#7dd3fc',
             ['coalesce', ['get', 'strokeColor'], '#ffffff'],
           ],
           'line-width': [
             'case',
             ['boolean', ['get', 'isSelected'], false],
             ['+', ['coalesce', ['get', 'strokeWidth'], 2], 1],
+            ['boolean', ['get', 'isHovered'], false],
+            ['+', ['coalesce', ['get', 'strokeWidth'], 2], 0.75],
             ['coalesce', ['get', 'strokeWidth'], 2],
           ],
+        },
+      });
+
+      map.addLayer({
+        id: 'polygon-line-hit',
+        type: 'line',
+        source: OBJECTS_SOURCE_ID,
+        filter: ['==', ['geometry-type'], 'Polygon'],
+        paint: {
+          'line-color': '#000000',
+          'line-width': ['+', ['coalesce', ['get', 'strokeWidth'], 2], 12],
+          'line-opacity': 0,
         },
       });
 
@@ -364,20 +450,56 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
         type: 'line',
         source: OBJECTS_SOURCE_ID,
         filter: ['==', ['geometry-type'], 'LineString'],
+        layout: {
+          'line-cap': 'round',
+          'line-join': 'round',
+        },
         paint: {
           'line-color': [
             'case',
             ['boolean', ['get', 'isSelected'], false],
             '#ffd166',
+            [
+              'all',
+              ['boolean', ['get', 'isHovered'], false],
+              ['boolean', ['get', 'isFreeDraw'], false],
+            ],
+            '#38bdf8',
+            ['boolean', ['get', 'isHovered'], false],
+            '#7dd3fc',
             ['coalesce', ['get', 'strokeColor'], '#ffffff'],
           ],
           'line-width': [
             'case',
             ['boolean', ['get', 'isSelected'], false],
             ['+', ['coalesce', ['get', 'strokeWidth'], 2], 1],
+            [
+              'all',
+              ['boolean', ['get', 'isHovered'], false],
+              ['boolean', ['get', 'isFreeDraw'], false],
+            ],
+            ['+', ['coalesce', ['get', 'strokeWidth'], 2], 2.5],
+            ['boolean', ['get', 'isHovered'], false],
+            ['+', ['coalesce', ['get', 'strokeWidth'], 2], 1.5],
             ['coalesce', ['get', 'strokeWidth'], 2],
           ],
           'line-opacity': ['coalesce', ['get', 'opacity'], 1],
+        },
+      });
+
+      map.addLayer({
+        id: 'line-string-hit',
+        type: 'line',
+        source: OBJECTS_SOURCE_ID,
+        filter: ['==', ['geometry-type'], 'LineString'],
+        layout: {
+          'line-cap': 'round',
+          'line-join': 'round',
+        },
+        paint: {
+          'line-color': '#000000',
+          'line-width': ['+', ['coalesce', ['get', 'strokeWidth'], 2], 14],
+          'line-opacity': 0,
         },
       });
 
@@ -394,9 +516,23 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
             'case',
             ['boolean', ['get', 'isSelected'], false],
             '#ffd166',
+            ['boolean', ['get', 'isHovered'], false],
+            '#7dd3fc',
             ['coalesce', ['get', 'strokeColor'], '#ffffff'],
           ],
           'circle-opacity': ['coalesce', ['get', 'opacity'], 1],
+        },
+      });
+
+      map.addLayer({
+        id: 'points-hit',
+        type: 'circle',
+        source: OBJECTS_SOURCE_ID,
+        filter: ['==', ['geometry-type'], 'Point'],
+        paint: {
+          'circle-radius': 14,
+          'circle-color': '#000000',
+          'circle-opacity': 0,
         },
       });
 
@@ -431,6 +567,22 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
           'line-color': '#9be7ff',
           'line-width': 2,
           'line-dasharray': [2, 2],
+        },
+      });
+
+      map.addLayer({
+        id: 'draft-free-draw-line',
+        type: 'line',
+        source: DRAFT_SOURCE_ID,
+        filter: ['all', ['==', ['geometry-type'], 'LineString'], ['==', ['get', 'draftRole'], 'free-draw-line']],
+        layout: {
+          'line-cap': 'round',
+          'line-join': 'round',
+        },
+        paint: {
+          'line-color': '#45c4ff',
+          'line-width': 2.5,
+          'line-opacity': 0.95,
         },
       });
 
@@ -557,10 +709,6 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
         return;
       }
 
-      if (String(feature.properties.objectId) !== selectedObjectRef.current?.id) {
-        return;
-      }
-
       hoverObjectIdRef.current = String(feature.properties.objectId);
       setHoverObjectId(String(feature.properties.objectId));
       updateCanvasCursor();
@@ -656,6 +804,10 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
     };
 
     const handleMapClick = (event: MapMouseEvent) => {
+      if (currentToolRef.current === 'freeDraw') {
+        return;
+      }
+
       if (currentToolRef.current === 'move') {
         const interactiveFeatures = map.queryRenderedFeatures(event.point, {
           layers: [...OBJECT_INTERACTIVE_LAYER_IDS],
@@ -694,6 +846,21 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
         });
         setHoverCoordinate(nextCoord);
       }
+    };
+
+    const handleMouseDown = (event: MapMouseEvent) => {
+      if (currentToolRef.current !== 'freeDraw') {
+        return;
+      }
+
+      dragMovedRef.current = false;
+      const nextPoints = [{ x: event.point.x, y: event.point.y }];
+      freeDrawScreenPointsRef.current = nextPoints;
+      isFreeDrawingRef.current = true;
+      setFreeDrawScreenPoints(nextPoints);
+      setIsFreeDrawing(true);
+      map.dragPan.disable();
+      updateCanvasCursor();
     };
 
     const handleDoubleClick = (event: MapMouseEvent) => {
@@ -743,6 +910,24 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
         return;
       }
 
+      if (isFreeDrawingRef.current && currentToolRef.current === 'freeDraw') {
+        const previousPoint = freeDrawScreenPointsRef.current.at(-1);
+        if (!previousPoint) {
+          return;
+        }
+
+        const distance = Math.hypot(event.point.x - previousPoint.x, event.point.y - previousPoint.y);
+        if (distance < FREE_DRAW_POINT_THRESHOLD) {
+          return;
+        }
+
+        dragMovedRef.current = true;
+        const nextPoints = [...freeDrawScreenPointsRef.current, { x: event.point.x, y: event.point.y }];
+        freeDrawScreenPointsRef.current = nextPoints;
+        setFreeDrawScreenPoints(nextPoints);
+        return;
+      }
+
       if (
         (currentToolRef.current !== 'polygon' && currentToolRef.current !== 'line') ||
         draftCoordinatesRef.current.length === 0
@@ -755,6 +940,20 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
     };
 
     const handleMouseUp = () => {
+      if (isFreeDrawingRef.current && currentToolRef.current === 'freeDraw') {
+        const coordinates = freeDrawScreenPointsRef.current.map(({ x, y }) => {
+          const coordinate = map.unproject([x, y]);
+          return [coordinate.lng, coordinate.lat] as Position;
+        });
+
+        resetFreeDraw();
+
+        if (dragMovedRef.current && coordinates.length >= 2) {
+          addObjectToSelectedLayer(createFreeDrawObject(coordinates));
+        }
+        return;
+      }
+
       const activeObjectId = dragObjectIdRef.current;
       if (activeObjectId) {
         const draggedObjectGeometry = dragMovedRef.current ? previewObjectGeometryRef.current : null;
@@ -789,21 +988,22 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       }
     };
 
-    map.on('mouseenter', 'polygon-fill', handleObjectMouseEnter);
-    map.on('mouseenter', 'polygon-line', handleObjectMouseEnter);
-    map.on('mouseenter', 'line-string', handleObjectMouseEnter);
-    map.on('mouseenter', 'points', handleObjectMouseEnter);
-    map.on('mouseleave', 'polygon-fill', handleObjectMouseLeave);
-    map.on('mouseleave', 'polygon-line', handleObjectMouseLeave);
-    map.on('mouseleave', 'line-string', handleObjectMouseLeave);
-    map.on('mouseleave', 'points', handleObjectMouseLeave);
-    map.on('mousedown', 'polygon-fill', handleObjectMouseDown);
-    map.on('mousedown', 'polygon-line', handleObjectMouseDown);
-    map.on('mousedown', 'line-string', handleObjectMouseDown);
-    map.on('mousedown', 'points', handleObjectMouseDown);
+    map.on('mouseenter', 'polygon-fill-hit', handleObjectMouseEnter);
+    map.on('mouseenter', 'polygon-line-hit', handleObjectMouseEnter);
+    map.on('mouseenter', 'line-string-hit', handleObjectMouseEnter);
+    map.on('mouseenter', 'points-hit', handleObjectMouseEnter);
+    map.on('mouseleave', 'polygon-fill-hit', handleObjectMouseLeave);
+    map.on('mouseleave', 'polygon-line-hit', handleObjectMouseLeave);
+    map.on('mouseleave', 'line-string-hit', handleObjectMouseLeave);
+    map.on('mouseleave', 'points-hit', handleObjectMouseLeave);
+    map.on('mousedown', 'polygon-fill-hit', handleObjectMouseDown);
+    map.on('mousedown', 'polygon-line-hit', handleObjectMouseDown);
+    map.on('mousedown', 'line-string-hit', handleObjectMouseDown);
+    map.on('mousedown', 'points-hit', handleObjectMouseDown);
     map.on('mouseenter', 'edit-vertex-hit', handleVertexMouseEnter);
     map.on('mouseleave', 'edit-vertex-hit', handleVertexMouseLeave);
     map.on('mousedown', 'edit-vertex-hit', handleVertexMouseDown);
+    map.on('mousedown', handleMouseDown);
     map.on('click', handleMapClick);
     map.on('dblclick', handleDoubleClick);
     map.on('mousemove', handleMouseMove);
@@ -815,21 +1015,22 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
     updateCanvasCursor();
 
     return () => {
-      map.off('mouseenter', 'polygon-fill', handleObjectMouseEnter);
-      map.off('mouseenter', 'polygon-line', handleObjectMouseEnter);
-      map.off('mouseenter', 'line-string', handleObjectMouseEnter);
-      map.off('mouseenter', 'points', handleObjectMouseEnter);
-      map.off('mouseleave', 'polygon-fill', handleObjectMouseLeave);
-      map.off('mouseleave', 'polygon-line', handleObjectMouseLeave);
-      map.off('mouseleave', 'line-string', handleObjectMouseLeave);
-      map.off('mouseleave', 'points', handleObjectMouseLeave);
-      map.off('mousedown', 'polygon-fill', handleObjectMouseDown);
-      map.off('mousedown', 'polygon-line', handleObjectMouseDown);
-      map.off('mousedown', 'line-string', handleObjectMouseDown);
-      map.off('mousedown', 'points', handleObjectMouseDown);
+      map.off('mouseenter', 'polygon-fill-hit', handleObjectMouseEnter);
+      map.off('mouseenter', 'polygon-line-hit', handleObjectMouseEnter);
+      map.off('mouseenter', 'line-string-hit', handleObjectMouseEnter);
+      map.off('mouseenter', 'points-hit', handleObjectMouseEnter);
+      map.off('mouseleave', 'polygon-fill-hit', handleObjectMouseLeave);
+      map.off('mouseleave', 'polygon-line-hit', handleObjectMouseLeave);
+      map.off('mouseleave', 'line-string-hit', handleObjectMouseLeave);
+      map.off('mouseleave', 'points-hit', handleObjectMouseLeave);
+      map.off('mousedown', 'polygon-fill-hit', handleObjectMouseDown);
+      map.off('mousedown', 'polygon-line-hit', handleObjectMouseDown);
+      map.off('mousedown', 'line-string-hit', handleObjectMouseDown);
+      map.off('mousedown', 'points-hit', handleObjectMouseDown);
       map.off('mouseenter', 'edit-vertex-hit', handleVertexMouseEnter);
       map.off('mouseleave', 'edit-vertex-hit', handleVertexMouseLeave);
       map.off('mousedown', 'edit-vertex-hit', handleVertexMouseDown);
+      map.off('mousedown', handleMouseDown);
       map.off('click', handleMapClick);
       map.off('dblclick', handleDoubleClick);
       map.off('mousemove', handleMouseMove);
@@ -887,8 +1088,9 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       tool: currentTool,
       isMapDragging: mapDraggingRef.current,
       isVertexHovering: hoverVertexIndex !== null,
-      isVertexDragging:
-        dragVertexIndex !== null || dragObjectId !== null || hoverObjectId !== null,
+      isVertexDragging: dragVertexIndex !== null,
+      isObjectHovering: hoverObjectId !== null,
+      isObjectDragging: dragObjectId !== null,
     });
 
     if (currentTool === 'polygon' || currentTool === 'line') {
@@ -916,6 +1118,16 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       setDragObjectId(null);
       setPreviewObjectGeometry(null);
       if (!map.dragPan.isEnabled()) {
+        map.dragPan.enable();
+      }
+    }
+
+    if (currentTool !== 'freeDraw') {
+      freeDrawScreenPointsRef.current = [];
+      isFreeDrawingRef.current = false;
+      setFreeDrawScreenPoints([]);
+      setIsFreeDrawing(false);
+      if (!map.dragPan.isEnabled() && dragVertexIndex === null && dragObjectId === null) {
         map.dragPan.enable();
       }
     }
@@ -980,6 +1192,11 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       {currentTool === 'line' && (
         <div className="pointer-events-none absolute left-3 top-3 rounded-md border border-white/10 bg-slate-950/60 px-3 py-2 text-xs text-white shadow-[0_4px_10px_rgba(15,23,42,0.18)]">
           Click to add points. Double-click to finish the line.
+        </div>
+      )}
+      {currentTool === 'freeDraw' && (
+        <div className="pointer-events-none absolute left-3 top-3 rounded-md border border-white/10 bg-slate-950/60 px-3 py-2 text-xs text-white shadow-[0_4px_10px_rgba(15,23,42,0.18)]">
+          Drag to sketch a freehand line.
         </div>
       )}
     </div>

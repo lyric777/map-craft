@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { translateGeometry } from '../lib/project';
+import { createFreeDrawObject, getEditableVertices, translateGeometry } from '../lib/project';
 
 describe('project helpers', () => {
   it('translates point, line, and polygon geometries', () => {
@@ -65,5 +65,15 @@ describe('project helpers', () => {
         ],
       ],
     });
+  });
+
+  it('does not expose editable vertices for free draw objects', () => {
+    const object = createFreeDrawObject([
+      [0, 0],
+      [1, 1],
+      [2, 1.5],
+    ]);
+
+    expect(getEditableVertices(object)).toEqual([]);
   });
 });

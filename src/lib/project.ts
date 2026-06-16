@@ -90,6 +90,27 @@ export const createLineObject = (coordinates: Position[]): MapcraftObject => ({
   meta: {},
 });
 
+export const createFreeDrawObject = (coordinates: Position[]): MapcraftObject => ({
+  id: createId(),
+  type: 'line',
+  geometry: {
+    type: 'LineString',
+    coordinates,
+  },
+  style: { ...DEFAULT_STYLE },
+  meta: {
+    drawingMode: 'freeDraw',
+  },
+});
+
+export const isFreeDrawObject = (object: MapcraftObject | null) => {
+  if (!object) {
+    return false;
+  }
+
+  return object.meta.drawingMode === 'freeDraw';
+};
+
 export const duplicateObject = (object: MapcraftObject): MapcraftObject => {
   const next = structuredClone(object);
   next.id = createId();
@@ -99,6 +120,10 @@ export const duplicateObject = (object: MapcraftObject): MapcraftObject => {
 export const getEditableVertices = (object: MapcraftObject | null): Position[] | null => {
   if (!object) {
     return null;
+  }
+
+  if (isFreeDrawObject(object)) {
+    return [];
   }
 
   if (object.type === 'line' && isLineGeometry(object.geometry)) {
@@ -184,6 +209,7 @@ export const translateGeometry = (
 export const projectToFeatureCollection = (
   layers: MapcraftLayer[],
   selectedObjectId: string | null,
+  hoveredObjectId: string | null,
   geometryOverrides: Record<string, Geometry> = {},
 ): FeatureCollection<Geometry> => {
   const features: Feature<Geometry>[] = [];
@@ -202,11 +228,13 @@ export const projectToFeatureCollection = (
           objectId: object.id,
           layerId: layer.id,
           objectType: object.type,
+          isFreeDraw: object.meta.drawingMode === 'freeDraw',
           fillColor: object.style.fillColor,
           strokeColor: object.style.strokeColor,
           strokeWidth: object.style.strokeWidth,
           opacity: object.style.opacity,
           isSelected: object.id === selectedObjectId,
+          isHovered: object.id === hoveredObjectId,
         },
       });
     });
@@ -373,5 +401,29 @@ export const draftLineToFeatureCollection = (
   return {
     type: 'FeatureCollection',
     features,
+  };
+};
+
+export const freeDrawToFeatureCollection = (
+  coordinates: Position[],
+): FeatureCollection<Geometry> => {
+  if (coordinates.length < 2) {
+    return EMPTY_FEATURE_COLLECTION;
+  }
+
+  return {
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        geometry: {
+          type: 'LineString',
+          coordinates,
+        },
+        properties: {
+          draftRole: 'free-draw-line',
+        },
+      },
+    ],
   };
 };
