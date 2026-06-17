@@ -1,31 +1,35 @@
 import type { Geometry, Position } from 'geojson';
-import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 import type maplibregl from 'maplibre-gl';
 
 import type { MapcraftObject, ToolId } from '../types/project';
 import type { ScreenPoint } from './types';
 
+export interface WritableRef<T> {
+  current: T;
+}
+
 export interface MapInteractionBindings {
   map: maplibregl.Map;
-  currentToolRef: MutableRefObject<ToolId>;
-  selectedLayerIdRef: MutableRefObject<string | null>;
-  selectedObjectRef: MutableRefObject<MapcraftObject | null>;
-  selectObjectRef: MutableRefObject<(objectId: string | null, layerId?: string | null) => void>;
-  updateSelectedObjectGeometryRef: MutableRefObject<(geometry: Geometry) => void>;
+  currentToolRef: WritableRef<ToolId>;
+  selectedLayerIdRef: WritableRef<string | null>;
+  selectedObjectRef: WritableRef<MapcraftObject | null>;
+  selectObjectRef: WritableRef<(objectId: string | null, layerId?: string | null) => void>;
+  updateSelectedObjectGeometryRef: WritableRef<(geometry: Geometry) => void>;
   addObjectToSelectedLayer: (object: MapcraftObject) => void;
-  draftCoordinatesRef: MutableRefObject<Position[]>;
-  closeToStartRef: MutableRefObject<boolean>;
-  hoverVertexIndexRef: MutableRefObject<number | null>;
-  dragVertexIndexRef: MutableRefObject<number | null>;
-  previewVerticesRef: MutableRefObject<Position[] | null>;
-  hoverObjectIdRef: MutableRefObject<string | null>;
-  dragObjectIdRef: MutableRefObject<string | null>;
-  previewObjectGeometryRef: MutableRefObject<Geometry | null>;
-  objectDragStartRef: MutableRefObject<Position | null>;
-  objectDragGeometryRef: MutableRefObject<Geometry | null>;
-  dragMovedRef: MutableRefObject<boolean>;
-  freeDrawScreenPointsRef: MutableRefObject<ScreenPoint[]>;
-  isFreeDrawingRef: MutableRefObject<boolean>;
+  draftCoordinatesRef: WritableRef<Position[]>;
+  closeToStartRef: WritableRef<boolean>;
+  hoverVertexIndexRef: WritableRef<number | null>;
+  dragVertexIndexRef: WritableRef<number | null>;
+  previewVerticesRef: WritableRef<Position[] | null>;
+  hoverObjectIdRef: WritableRef<string | null>;
+  dragObjectIdRef: WritableRef<string | null>;
+  previewObjectGeometryRef: WritableRef<Geometry | null>;
+  objectDragStartRef: WritableRef<Position | null>;
+  objectDragGeometryRef: WritableRef<Geometry | null>;
+  dragMovedRef: WritableRef<boolean>;
+  freeDrawScreenPointsRef: WritableRef<ScreenPoint[]>;
+  isFreeDrawingRef: WritableRef<boolean>;
   setDraftCoordinates: Dispatch<SetStateAction<Position[]>>;
   setHoverCoordinate: Dispatch<SetStateAction<Position | null>>;
   setHoverVertexIndex: Dispatch<SetStateAction<number | null>>;
