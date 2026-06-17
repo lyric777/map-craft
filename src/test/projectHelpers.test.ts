@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { createFreeDrawObject, getEditableVertices, translateGeometry } from '../lib/project';
+import {
+  createDefaultLayer,
+  createFreeDrawObject,
+  createLineObject,
+  getEditableVertices,
+  projectToFeatureCollection,
+  translateGeometry,
+} from '../lib/project';
 
 describe('project helpers', () => {
   it('translates point, line, and polygon geometries', () => {
@@ -75,5 +82,40 @@ describe('project helpers', () => {
     ]);
 
     expect(getEditableVertices(object)).toEqual([]);
+  });
+
+  it('projects selection, hover, and free draw metadata into map features', () => {
+    const layer = createDefaultLayer();
+    const freeDraw = createFreeDrawObject([
+      [0, 0],
+      [1, 1],
+    ]);
+    const line = createLineObject([
+      [2, 2],
+      [3, 3],
+    ]);
+    layer.objects.push(freeDraw, line);
+
+    const collection = projectToFeatureCollection([layer], freeDraw.id, line.id);
+    const freeDrawFeature = collection.features.find((feature) => feature.id === freeDraw.id);
+    const lineFeature = collection.features.find((feature) => feature.id === line.id);
+
+    expect(freeDrawFeature?.properties).toMatchObject({
+      objectId: freeDraw.id,
+      layerId: layer.id,
+      objectType: 'line',
+      isFreeDraw: true,
+      isSelected: true,
+      isHovered: false,
+    });
+
+    expect(lineFeature?.properties).toMatchObject({
+      objectId: line.id,
+      layerId: layer.id,
+      objectType: 'line',
+      isFreeDraw: false,
+      isSelected: false,
+      isHovered: true,
+    });
   });
 });

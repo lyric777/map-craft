@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { createLineObject, createPointObject, createPolygonObject } from '../lib/project';
+import { createFreeDrawObject, createLineObject, createPointObject, createPolygonObject } from '../lib/project';
 import { useEditorStore } from '../state/editorStore';
 
 describe('editor store', () => {
@@ -111,5 +111,33 @@ describe('editor store', () => {
 
     const objects = useEditorStore.getState().project.layers[0]?.objects ?? [];
     expect(objects.map((object) => object.type)).toEqual(['point', 'line']);
+  });
+
+  it('preserves free draw metadata when updating selected geometry', () => {
+    const store = useEditorStore.getState();
+    store.addObjectToSelectedLayer(
+      createFreeDrawObject([
+        [0, 0],
+        [1, 1],
+      ]),
+    );
+
+    store.updateSelectedObjectGeometry({
+      type: 'LineString',
+      coordinates: [
+        [2, 2],
+        [4, 5],
+      ],
+    });
+
+    const object = useEditorStore.getState().project.layers[0]?.objects[0];
+    expect(object?.meta).toMatchObject({ drawingMode: 'freeDraw' });
+    expect(object?.geometry).toEqual({
+      type: 'LineString',
+      coordinates: [
+        [2, 2],
+        [4, 5],
+      ],
+    });
   });
 });

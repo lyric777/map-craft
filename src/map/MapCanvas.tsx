@@ -1,115 +1,35 @@
 import 'maplibre-gl/dist/maplibre-gl.css';
 
-import type { FeatureCollection, Geometry, Position } from 'geojson';
-import type { MapGeoJSONFeature, MapLayerMouseEvent, MapMouseEvent, StyleSpecification } from 'maplibre-gl';
+import type { Geometry, Position } from 'geojson';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import { useShallow } from 'zustand/react/shallow';
 
 import {
   buildGeometryFromVertices,
-  createFreeDrawObject,
-  createLineObject,
-  createPointObject,
-  createPolygonObject,
   draftLineToFeatureCollection,
   draftPolygonToFeatureCollection,
   freeDrawToFeatureCollection,
   getEditableVertices,
   projectToFeatureCollection,
-  translateGeometry,
   vertexHandlesToFeatureCollection,
 } from '../lib/project';
+import { getCursorForState } from './cursor';
+import {
+  BASEMAP_STYLE,
+  DRAFT_SOURCE_ID,
+  EDIT_SOURCE_ID,
+  EMPTY_GEOJSON,
+  OBJECTS_SOURCE_ID,
+} from './constants';
+import { bindMapInteractions } from './interactions';
+import { registerEditorLayers } from './layers';
 import { selectActiveObject, useEditorStore } from '../state/editorStore';
-import type { ToolId } from '../types/project';
-
-const BASEMAP_STYLE: StyleSpecification = {
-  version: 8,
-  sources: {
-    osm: {
-      type: 'raster',
-      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-      tileSize: 256,
-      attribution: '&copy; OpenStreetMap contributors',
-    },
-  },
-  layers: [
-    {
-      id: 'osm',
-      type: 'raster',
-      source: 'osm',
-    },
-  ],
-};
+import type { ScreenPoint } from './types';
 
 interface MapCanvasProps {
   onMapReady: (map: maplibregl.Map) => void;
 }
-
-interface ScreenPoint {
-  x: number;
-  y: number;
-}
-
-const OBJECTS_SOURCE_ID = 'objects';
-const DRAFT_SOURCE_ID = 'draft';
-const EDIT_SOURCE_ID = 'edit-vertices';
-const OBJECT_INTERACTIVE_LAYER_IDS = [
-  'polygon-fill-hit',
-  'polygon-line-hit',
-  'line-string-hit',
-  'points-hit',
-  'polygon-fill',
-  'polygon-line',
-  'line-string',
-  'points',
-] as const;
-const FREE_DRAW_POINT_THRESHOLD = 4;
-const EMPTY_GEOJSON: FeatureCollection<Geometry> = {
-  type: 'FeatureCollection',
-  features: [],
-};
-
-const isFeatureSelectable = (feature: MapGeoJSONFeature | undefined): feature is MapGeoJSONFeature =>
-  Boolean(feature?.properties?.objectId);
-
-const getCursorForState = ({
-  tool,
-  isMapDragging,
-  isVertexHovering,
-  isVertexDragging,
-  isObjectHovering,
-  isObjectDragging,
-}: {
-  tool: ToolId;
-  isMapDragging: boolean;
-  isVertexHovering: boolean;
-  isVertexDragging: boolean;
-  isObjectHovering: boolean;
-  isObjectDragging: boolean;
-}) => {
-  if (isMapDragging || isVertexDragging || isObjectDragging) {
-    return 'grabbing';
-  }
-
-  if (isVertexHovering && tool === 'move') {
-    return 'grab';
-  }
-
-  if (isObjectHovering && tool === 'move') {
-    return 'grab';
-  }
-
-  if (tool === 'point') {
-    return 'cell';
-  }
-
-  if (tool === 'line' || tool === 'polygon' || tool === 'freeDraw') {
-    return 'crosshair';
-  }
-
-  return 'default';
-};
 
 export function MapCanvas({ onMapReady }: MapCanvasProps) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
@@ -385,268 +305,7 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
         type: 'geojson',
         data: editGeoJsonRef.current,
       });
-
-      map.addLayer({
-        id: 'polygon-fill',
-        type: 'fill',
-        source: OBJECTS_SOURCE_ID,
-        filter: ['==', ['geometry-type'], 'Polygon'],
-        paint: {
-          'fill-color': ['coalesce', ['get', 'fillColor'], '#45c4ff'],
-          'fill-opacity': ['coalesce', ['get', 'opacity'], 0.45],
-        },
-      });
-
-      map.addLayer({
-        id: 'polygon-fill-hit',
-        type: 'fill',
-        source: OBJECTS_SOURCE_ID,
-        filter: ['==', ['geometry-type'], 'Polygon'],
-        paint: {
-          'fill-color': '#000000',
-          'fill-opacity': 0,
-        },
-      });
-
-      map.addLayer({
-        id: 'polygon-line',
-        type: 'line',
-        source: OBJECTS_SOURCE_ID,
-        filter: ['==', ['geometry-type'], 'Polygon'],
-        paint: {
-          'line-color': [
-            'case',
-            ['boolean', ['get', 'isSelected'], false],
-            '#ffd166',
-            ['boolean', ['get', 'isHovered'], false],
-            '#7dd3fc',
-            ['coalesce', ['get', 'strokeColor'], '#ffffff'],
-          ],
-          'line-width': [
-            'case',
-            ['boolean', ['get', 'isSelected'], false],
-            ['+', ['coalesce', ['get', 'strokeWidth'], 2], 1],
-            ['boolean', ['get', 'isHovered'], false],
-            ['+', ['coalesce', ['get', 'strokeWidth'], 2], 0.75],
-            ['coalesce', ['get', 'strokeWidth'], 2],
-          ],
-        },
-      });
-
-      map.addLayer({
-        id: 'polygon-line-hit',
-        type: 'line',
-        source: OBJECTS_SOURCE_ID,
-        filter: ['==', ['geometry-type'], 'Polygon'],
-        paint: {
-          'line-color': '#000000',
-          'line-width': ['+', ['coalesce', ['get', 'strokeWidth'], 2], 12],
-          'line-opacity': 0,
-        },
-      });
-
-      map.addLayer({
-        id: 'line-string',
-        type: 'line',
-        source: OBJECTS_SOURCE_ID,
-        filter: ['==', ['geometry-type'], 'LineString'],
-        layout: {
-          'line-cap': 'round',
-          'line-join': 'round',
-        },
-        paint: {
-          'line-color': [
-            'case',
-            ['boolean', ['get', 'isSelected'], false],
-            '#ffd166',
-            [
-              'all',
-              ['boolean', ['get', 'isHovered'], false],
-              ['boolean', ['get', 'isFreeDraw'], false],
-            ],
-            '#38bdf8',
-            ['boolean', ['get', 'isHovered'], false],
-            '#7dd3fc',
-            ['coalesce', ['get', 'strokeColor'], '#ffffff'],
-          ],
-          'line-width': [
-            'case',
-            ['boolean', ['get', 'isSelected'], false],
-            ['+', ['coalesce', ['get', 'strokeWidth'], 2], 1],
-            [
-              'all',
-              ['boolean', ['get', 'isHovered'], false],
-              ['boolean', ['get', 'isFreeDraw'], false],
-            ],
-            ['+', ['coalesce', ['get', 'strokeWidth'], 2], 2.5],
-            ['boolean', ['get', 'isHovered'], false],
-            ['+', ['coalesce', ['get', 'strokeWidth'], 2], 1.5],
-            ['coalesce', ['get', 'strokeWidth'], 2],
-          ],
-          'line-opacity': ['coalesce', ['get', 'opacity'], 1],
-        },
-      });
-
-      map.addLayer({
-        id: 'line-string-hit',
-        type: 'line',
-        source: OBJECTS_SOURCE_ID,
-        filter: ['==', ['geometry-type'], 'LineString'],
-        layout: {
-          'line-cap': 'round',
-          'line-join': 'round',
-        },
-        paint: {
-          'line-color': '#000000',
-          'line-width': ['+', ['coalesce', ['get', 'strokeWidth'], 2], 14],
-          'line-opacity': 0,
-        },
-      });
-
-      map.addLayer({
-        id: 'points',
-        type: 'circle',
-        source: OBJECTS_SOURCE_ID,
-        filter: ['==', ['geometry-type'], 'Point'],
-        paint: {
-          'circle-radius': ['case', ['boolean', ['get', 'isSelected'], false], 8, 6],
-          'circle-color': ['coalesce', ['get', 'fillColor'], '#45c4ff'],
-          'circle-stroke-width': ['case', ['boolean', ['get', 'isSelected'], false], 3, 2],
-          'circle-stroke-color': [
-            'case',
-            ['boolean', ['get', 'isSelected'], false],
-            '#ffd166',
-            ['boolean', ['get', 'isHovered'], false],
-            '#7dd3fc',
-            ['coalesce', ['get', 'strokeColor'], '#ffffff'],
-          ],
-          'circle-opacity': ['coalesce', ['get', 'opacity'], 1],
-        },
-      });
-
-      map.addLayer({
-        id: 'points-hit',
-        type: 'circle',
-        source: OBJECTS_SOURCE_ID,
-        filter: ['==', ['geometry-type'], 'Point'],
-        paint: {
-          'circle-radius': 14,
-          'circle-color': '#000000',
-          'circle-opacity': 0,
-        },
-      });
-
-      map.addLayer({
-        id: 'draft-fill',
-        type: 'fill',
-        source: DRAFT_SOURCE_ID,
-        filter: ['all', ['==', ['geometry-type'], 'Polygon'], ['==', ['get', 'draftRole'], 'preview-fill']],
-        paint: {
-          'fill-color': '#45c4ff',
-          'fill-opacity': 0.2,
-        },
-      });
-
-      map.addLayer({
-        id: 'draft-committed-line',
-        type: 'line',
-        source: DRAFT_SOURCE_ID,
-        filter: ['all', ['==', ['geometry-type'], 'LineString'], ['==', ['get', 'draftRole'], 'committed-line']],
-        paint: {
-          'line-color': '#45c4ff',
-          'line-width': 2,
-        },
-      });
-
-      map.addLayer({
-        id: 'draft-active-line',
-        type: 'line',
-        source: DRAFT_SOURCE_ID,
-        filter: ['all', ['==', ['geometry-type'], 'LineString'], ['==', ['get', 'draftRole'], 'active-line']],
-        paint: {
-          'line-color': '#9be7ff',
-          'line-width': 2,
-          'line-dasharray': [2, 2],
-        },
-      });
-
-      map.addLayer({
-        id: 'draft-free-draw-line',
-        type: 'line',
-        source: DRAFT_SOURCE_ID,
-        filter: ['all', ['==', ['geometry-type'], 'LineString'], ['==', ['get', 'draftRole'], 'free-draw-line']],
-        layout: {
-          'line-cap': 'round',
-          'line-join': 'round',
-        },
-        paint: {
-          'line-color': '#45c4ff',
-          'line-width': 2.5,
-          'line-opacity': 0.95,
-        },
-      });
-
-      map.addLayer({
-        id: 'draft-vertices',
-        type: 'circle',
-        source: DRAFT_SOURCE_ID,
-        filter: ['all', ['==', ['geometry-type'], 'Point'], ['==', ['get', 'draftRole'], 'vertex']],
-        paint: {
-          'circle-radius': 4,
-          'circle-color': '#45c4ff',
-          'circle-stroke-width': 1.5,
-          'circle-stroke-color': '#ffffff',
-        },
-      });
-
-      map.addLayer({
-        id: 'draft-start-vertex',
-        type: 'circle',
-        source: DRAFT_SOURCE_ID,
-        filter: ['all', ['==', ['geometry-type'], 'Point'], ['==', ['get', 'draftRole'], 'start-vertex']],
-        paint: {
-          'circle-radius': ['case', ['boolean', ['get', 'snapReady'], false], 7, 5],
-          'circle-color': ['case', ['boolean', ['get', 'snapReady'], false], '#ffd166', '#45c4ff'],
-          'circle-stroke-width': 2,
-          'circle-stroke-color': '#ffffff',
-        },
-      });
-
-      map.addLayer({
-        id: 'edit-vertex-hit',
-        type: 'circle',
-        source: EDIT_SOURCE_ID,
-        paint: {
-          'circle-radius': 12,
-          'circle-opacity': 0,
-        },
-      });
-
-      map.addLayer({
-        id: 'edit-vertices',
-        type: 'circle',
-        source: EDIT_SOURCE_ID,
-        paint: {
-          'circle-radius': [
-            'case',
-            ['boolean', ['get', 'isDragging'], false],
-            8,
-            ['boolean', ['get', 'isHover'], false],
-            7,
-            5,
-          ],
-          'circle-color': [
-            'case',
-            ['boolean', ['get', 'isDragging'], false],
-            '#ffd166',
-            ['boolean', ['get', 'isHover'], false],
-            '#9be7ff',
-            '#ffffff',
-          ],
-          'circle-stroke-width': 2,
-          'circle-stroke-color': '#0f172a',
-        },
-      });
+      registerEditorLayers(map);
     });
 
     map.on('moveend', () => {
@@ -669,373 +328,48 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       updateCanvasCursor();
     });
 
-    const finishPolygon = () => {
-      const coords = draftCoordinatesRef.current;
-      const layerId = selectedLayerIdRef.current;
-      if (coords.length < 3 || !layerId) {
-        return;
-      }
-
-      addObjectToSelectedLayer(createPolygonObject([...coords, coords[0]] as number[][]));
-      draftCoordinatesRef.current = [];
-      setDraftCoordinates([]);
-      setHoverCoordinate(null);
-    };
-
-    const finishLine = () => {
-      const coords = draftCoordinatesRef.current;
-      const layerId = selectedLayerIdRef.current;
-      if (coords.length < 2 || !layerId) {
-        return;
-      }
-
-      addObjectToSelectedLayer(createLineObject(coords));
-      draftCoordinatesRef.current = [];
-      setDraftCoordinates([]);
-      setHoverCoordinate(null);
-    };
-
-    const handleObjectMouseEnter = (event: MapLayerMouseEvent) => {
-      if (
-        currentToolRef.current !== 'move' ||
-        dragVertexIndexRef.current !== null ||
-        dragObjectIdRef.current !== null
-      ) {
-        return;
-      }
-
-      const feature = event.features?.[0];
-      if (!isFeatureSelectable(feature)) {
-        return;
-      }
-
-      hoverObjectIdRef.current = String(feature.properties.objectId);
-      setHoverObjectId(String(feature.properties.objectId));
-      updateCanvasCursor();
-    };
-
-    const handleObjectMouseLeave = () => {
-      if (dragObjectIdRef.current !== null || dragVertexIndexRef.current !== null) {
-        return;
-      }
-
-      hoverObjectIdRef.current = null;
-      setHoverObjectId(null);
-      updateCanvasCursor();
-    };
-
-    const handleObjectMouseDown = (event: MapLayerMouseEvent) => {
-      if (currentToolRef.current !== 'move' || dragVertexIndexRef.current !== null) {
-        return;
-      }
-
-      const feature = event.features?.[0];
-      if (!isFeatureSelectable(feature)) {
-        return;
-      }
-
-      const objectId = String(feature.properties.objectId);
-      if (objectId !== selectedObjectRef.current?.id || !selectedObjectRef.current) {
-        return;
-      }
-
-      event.preventDefault();
-      dragObjectIdRef.current = objectId;
-      hoverObjectIdRef.current = objectId;
-      objectDragStartRef.current = [event.lngLat.lng, event.lngLat.lat];
-      objectDragGeometryRef.current = structuredClone(selectedObjectRef.current.geometry);
-      dragMovedRef.current = false;
-      setDragObjectId(objectId);
-      setHoverObjectId(objectId);
-      map.dragPan.disable();
-      updateCanvasCursor();
-    };
-
-    const handleVertexMouseEnter = (event: MapLayerMouseEvent) => {
-      if (currentToolRef.current !== 'move' || dragVertexIndexRef.current !== null) {
-        return;
-      }
-
-      const feature = event.features?.[0];
-      const nextIndex = Number(feature?.properties?.vertexIndex);
-      if (Number.isNaN(nextIndex)) {
-        return;
-      }
-
-      hoverVertexIndexRef.current = nextIndex;
-      setHoverVertexIndex(nextIndex);
-      updateCanvasCursor();
-    };
-
-    const handleVertexMouseLeave = () => {
-      if (dragVertexIndexRef.current !== null) {
-        return;
-      }
-
-      hoverVertexIndexRef.current = null;
-      setHoverVertexIndex(null);
-      updateCanvasCursor();
-    };
-
-    const handleVertexMouseDown = (event: MapLayerMouseEvent) => {
-      if (currentToolRef.current !== 'move') {
-        return;
-      }
-
-      const feature = event.features?.[0];
-      const nextIndex = Number(feature?.properties?.vertexIndex);
-      const baseVertices = getEditableVertices(selectedObjectRef.current);
-      if (Number.isNaN(nextIndex) || !baseVertices) {
-        return;
-      }
-
-      event.preventDefault();
-      dragVertexIndexRef.current = nextIndex;
-      hoverVertexIndexRef.current = nextIndex;
-      hoverObjectIdRef.current = null;
-      previewVerticesRef.current = baseVertices;
-      dragMovedRef.current = false;
-      setDragVertexIndex(nextIndex);
-      setHoverVertexIndex(nextIndex);
-      setHoverObjectId(null);
-      setPreviewVertices(baseVertices);
-      map.dragPan.disable();
-      updateCanvasCursor();
-    };
-
-    const handleMapClick = (event: MapMouseEvent) => {
-      if (currentToolRef.current === 'freeDraw') {
-        return;
-      }
-
-      if (currentToolRef.current === 'move') {
-        const interactiveFeatures = map.queryRenderedFeatures(event.point, {
-          layers: [...OBJECT_INTERACTIVE_LAYER_IDS],
-        });
-
-        const selectableFeature = interactiveFeatures.find(isFeatureSelectable);
-        if (selectableFeature) {
-          selectObjectRef.current(
-            String(selectableFeature.properties.objectId),
-            String(selectableFeature.properties.layerId),
-          );
-        } else {
-          selectObjectRef.current(null, selectedLayerIdRef.current);
-        }
-        return;
-      }
-
-      if (currentToolRef.current === 'point') {
-        const coordinate: Position = [event.lngLat.lng, event.lngLat.lat];
-        addObjectToSelectedLayer(createPointObject(coordinate));
-        setHoverCoordinate(null);
-        return;
-      }
-
-      if (currentToolRef.current === 'line' || currentToolRef.current === 'polygon') {
-        if (currentToolRef.current === 'polygon' && closeToStartRef.current) {
-          finishPolygon();
-          return;
-        }
-
-        const nextCoord: Position = [event.lngLat.lng, event.lngLat.lat];
-        setDraftCoordinates((coords) => {
-          const next = [...coords, nextCoord];
-          draftCoordinatesRef.current = next;
-          return next;
-        });
-        setHoverCoordinate(nextCoord);
-      }
-    };
-
-    const handleMouseDown = (event: MapMouseEvent) => {
-      if (currentToolRef.current !== 'freeDraw') {
-        return;
-      }
-
-      dragMovedRef.current = false;
-      const nextPoints = [{ x: event.point.x, y: event.point.y }];
-      freeDrawScreenPointsRef.current = nextPoints;
-      isFreeDrawingRef.current = true;
-      setFreeDrawScreenPoints(nextPoints);
-      setIsFreeDrawing(true);
-      map.dragPan.disable();
-      updateCanvasCursor();
-    };
-
-    const handleDoubleClick = (event: MapMouseEvent) => {
-      if (currentToolRef.current !== 'polygon' && currentToolRef.current !== 'line') {
-        return;
-      }
-
-      event.originalEvent.preventDefault();
-      if (currentToolRef.current === 'polygon') {
-        finishPolygon();
-      } else {
-        finishLine();
-      }
-    };
-
-    const handleMouseMove = (event: MapMouseEvent) => {
-      const activeVertexIndex = dragVertexIndexRef.current;
-      if (activeVertexIndex !== null) {
-        const baseVertices = previewVerticesRef.current ?? getEditableVertices(selectedObjectRef.current);
-        if (!baseVertices) {
-          return;
-        }
-
-        dragMovedRef.current = true;
-        const nextVertices = baseVertices.map((coordinate, index) =>
-          index === activeVertexIndex ? ([event.lngLat.lng, event.lngLat.lat] as Position) : coordinate,
-        );
-        previewVerticesRef.current = nextVertices;
-        setPreviewVertices(nextVertices);
-        return;
-      }
-
-      const activeObjectId = dragObjectIdRef.current;
-      const dragOrigin = objectDragStartRef.current;
-      const baseGeometry = objectDragGeometryRef.current;
-      if (activeObjectId && dragOrigin && baseGeometry) {
-        const deltaLng = event.lngLat.lng - dragOrigin[0];
-        const deltaLat = event.lngLat.lat - dragOrigin[1];
-        const nextGeometry = translateGeometry(baseGeometry, deltaLng, deltaLat);
-        if (!nextGeometry) {
-          return;
-        }
-
-        dragMovedRef.current = true;
-        previewObjectGeometryRef.current = nextGeometry;
-        setPreviewObjectGeometry(nextGeometry);
-        return;
-      }
-
-      if (isFreeDrawingRef.current && currentToolRef.current === 'freeDraw') {
-        const previousPoint = freeDrawScreenPointsRef.current.at(-1);
-        if (!previousPoint) {
-          return;
-        }
-
-        const distance = Math.hypot(event.point.x - previousPoint.x, event.point.y - previousPoint.y);
-        if (distance < FREE_DRAW_POINT_THRESHOLD) {
-          return;
-        }
-
-        dragMovedRef.current = true;
-        const nextPoints = [...freeDrawScreenPointsRef.current, { x: event.point.x, y: event.point.y }];
-        freeDrawScreenPointsRef.current = nextPoints;
-        setFreeDrawScreenPoints(nextPoints);
-        return;
-      }
-
-      if (
-        (currentToolRef.current !== 'polygon' && currentToolRef.current !== 'line') ||
-        draftCoordinatesRef.current.length === 0
-      ) {
-        setHoverCoordinate(null);
-        return;
-      }
-
-      setHoverCoordinate([event.lngLat.lng, event.lngLat.lat]);
-    };
-
-    const handleMouseUp = () => {
-      if (isFreeDrawingRef.current && currentToolRef.current === 'freeDraw') {
-        const coordinates = freeDrawScreenPointsRef.current.map(({ x, y }) => {
-          const coordinate = map.unproject([x, y]);
-          return [coordinate.lng, coordinate.lat] as Position;
-        });
-
-        resetFreeDraw();
-
-        if (dragMovedRef.current && coordinates.length >= 2) {
-          addObjectToSelectedLayer(createFreeDrawObject(coordinates));
-        }
-        return;
-      }
-
-      const activeObjectId = dragObjectIdRef.current;
-      if (activeObjectId) {
-        const draggedObjectGeometry = dragMovedRef.current ? previewObjectGeometryRef.current : null;
-        resetVertexEditing();
-        if (draggedObjectGeometry) {
-          updateSelectedObjectGeometryRef.current(draggedObjectGeometry);
-        }
-        return;
-      }
-
-      const activeVertexIndex = dragVertexIndexRef.current;
-      const vertices = previewVerticesRef.current;
-      const object = selectedObjectRef.current;
-      if (activeVertexIndex === null) {
-        return;
-      }
-
-      const nextGeometry =
-        dragMovedRef.current && vertices && object
-          ? buildGeometryFromVertices(object.type, vertices)
-          : null;
-      resetVertexEditing();
-
-      if (nextGeometry) {
-        updateSelectedObjectGeometryRef.current(nextGeometry);
-      }
-    };
-
-    const handleMouseOut = () => {
-      if (dragVertexIndexRef.current === null) {
-        setHoverCoordinate(null);
-      }
-    };
-
-    map.on('mouseenter', 'polygon-fill-hit', handleObjectMouseEnter);
-    map.on('mouseenter', 'polygon-line-hit', handleObjectMouseEnter);
-    map.on('mouseenter', 'line-string-hit', handleObjectMouseEnter);
-    map.on('mouseenter', 'points-hit', handleObjectMouseEnter);
-    map.on('mouseleave', 'polygon-fill-hit', handleObjectMouseLeave);
-    map.on('mouseleave', 'polygon-line-hit', handleObjectMouseLeave);
-    map.on('mouseleave', 'line-string-hit', handleObjectMouseLeave);
-    map.on('mouseleave', 'points-hit', handleObjectMouseLeave);
-    map.on('mousedown', 'polygon-fill-hit', handleObjectMouseDown);
-    map.on('mousedown', 'polygon-line-hit', handleObjectMouseDown);
-    map.on('mousedown', 'line-string-hit', handleObjectMouseDown);
-    map.on('mousedown', 'points-hit', handleObjectMouseDown);
-    map.on('mouseenter', 'edit-vertex-hit', handleVertexMouseEnter);
-    map.on('mouseleave', 'edit-vertex-hit', handleVertexMouseLeave);
-    map.on('mousedown', 'edit-vertex-hit', handleVertexMouseDown);
-    map.on('mousedown', handleMouseDown);
-    map.on('click', handleMapClick);
-    map.on('dblclick', handleDoubleClick);
-    map.on('mousemove', handleMouseMove);
-    map.on('mouseup', handleMouseUp);
-    map.on('mouseout', handleMouseOut);
+    const detachInteractions = bindMapInteractions({
+      map,
+      currentToolRef,
+      selectedLayerIdRef,
+      selectedObjectRef,
+      selectObjectRef,
+      updateSelectedObjectGeometryRef,
+      addObjectToSelectedLayer,
+      draftCoordinatesRef,
+      closeToStartRef,
+      hoverVertexIndexRef,
+      dragVertexIndexRef,
+      previewVerticesRef,
+      hoverObjectIdRef,
+      dragObjectIdRef,
+      previewObjectGeometryRef,
+      objectDragStartRef,
+      objectDragGeometryRef,
+      dragMovedRef,
+      freeDrawScreenPointsRef,
+      isFreeDrawingRef,
+      setDraftCoordinates,
+      setHoverCoordinate,
+      setHoverVertexIndex,
+      setDragVertexIndex,
+      setPreviewVertices,
+      setHoverObjectId,
+      setDragObjectId,
+      setPreviewObjectGeometry,
+      setFreeDrawScreenPoints,
+      setIsFreeDrawing,
+      updateCanvasCursor,
+      resetVertexEditing,
+      resetFreeDraw,
+    });
 
     onMapReadyRef.current(map);
     mapRef.current = map;
     updateCanvasCursor();
 
     return () => {
-      map.off('mouseenter', 'polygon-fill-hit', handleObjectMouseEnter);
-      map.off('mouseenter', 'polygon-line-hit', handleObjectMouseEnter);
-      map.off('mouseenter', 'line-string-hit', handleObjectMouseEnter);
-      map.off('mouseenter', 'points-hit', handleObjectMouseEnter);
-      map.off('mouseleave', 'polygon-fill-hit', handleObjectMouseLeave);
-      map.off('mouseleave', 'polygon-line-hit', handleObjectMouseLeave);
-      map.off('mouseleave', 'line-string-hit', handleObjectMouseLeave);
-      map.off('mouseleave', 'points-hit', handleObjectMouseLeave);
-      map.off('mousedown', 'polygon-fill-hit', handleObjectMouseDown);
-      map.off('mousedown', 'polygon-line-hit', handleObjectMouseDown);
-      map.off('mousedown', 'line-string-hit', handleObjectMouseDown);
-      map.off('mousedown', 'points-hit', handleObjectMouseDown);
-      map.off('mouseenter', 'edit-vertex-hit', handleVertexMouseEnter);
-      map.off('mouseleave', 'edit-vertex-hit', handleVertexMouseLeave);
-      map.off('mousedown', 'edit-vertex-hit', handleVertexMouseDown);
-      map.off('mousedown', handleMouseDown);
-      map.off('click', handleMapClick);
-      map.off('dblclick', handleDoubleClick);
-      map.off('mousemove', handleMouseMove);
-      map.off('mouseup', handleMouseUp);
-      map.off('mouseout', handleMouseOut);
+      detachInteractions();
       map.getCanvasContainer().style.cursor = '';
       map.remove();
       mapRef.current = null;
