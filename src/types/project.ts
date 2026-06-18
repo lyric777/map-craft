@@ -1,7 +1,7 @@
 import type { Geometry, Position } from 'geojson';
 
 export type MapObjectType = 'point' | 'line' | 'polygon';
-export type ToolId = 'move' | 'freeDraw' | 'point' | 'line' | 'polygon';
+export type ToolId = 'move' | 'freeDraw' | 'eraser' | 'point' | 'line' | 'polygon';
 
 export interface MapObjectStyle {
   fillColor: string;

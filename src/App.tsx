@@ -235,8 +235,8 @@ function App() {
                 </div>
               </div>
               <div className="mt-6 text-xs text-subtle">
-                Shortcuts: `V` Move, `P` Point, `L` Line, `B` Polygon, `Delete` Remove, `Ctrl/Cmd+D`
-                Duplicate, `Ctrl/Cmd+Z` Undo, `Ctrl/Cmd+Shift+Z` Redo.
+                Shortcuts: `V` Move, `F` Free Draw, `E` Eraser, `P` Point, `L` Line, `B` Polygon,
+                `Delete` Remove, `Ctrl/Cmd+D` Duplicate, `Ctrl/Cmd+Z` Undo, `Ctrl/Cmd+Shift+Z` Redo.
               </div>
             </section>
           </div>

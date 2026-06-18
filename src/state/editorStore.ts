@@ -26,6 +26,7 @@ interface EditorState extends EditorSnapshot {
   addObjectToSelectedLayer: (object: MapcraftObject) => void;
   updateSelectedObjectStyle: (style: Partial<MapcraftObject['style']>) => void;
   updateSelectedObjectGeometry: (geometry: MapcraftObject['geometry']) => void;
+  deleteObjectsByIds: (objectIds: string[]) => void;
   deleteSelectedObject: () => void;
   duplicateSelectedObject: () => void;
   undo: () => void;
@@ -176,6 +177,21 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const object = layer?.objects.find((candidate) => candidate.id === draft.selectedObjectId);
       if (object) {
         object.geometry = structuredClone(geometry);
+      }
+    }),
+  deleteObjectsByIds: (objectIds) =>
+    mutateWithHistory(set, get, (draft) => {
+      if (objectIds.length === 0) {
+        return;
+      }
+
+      const deleted = new Set(objectIds);
+      draft.project.layers.forEach((layer) => {
+        layer.objects = layer.objects.filter((candidate) => !deleted.has(candidate.id));
+      });
+
+      if (draft.selectedObjectId && deleted.has(draft.selectedObjectId)) {
+        draft.selectedObjectId = null;
       }
     }),
   deleteSelectedObject: () =>

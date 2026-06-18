@@ -103,6 +103,91 @@ export const createFreeDrawObject = (coordinates: Position[]): MapcraftObject =>
   },
 });
 
+const SMOOTHING_WINDOW_RADIUS = 2;
+const FREE_DRAW_SIMPLIFY_EPSILON = 0.00008;
+
+const getSmoothedCoordinate = (coordinates: Position[], index: number): Position => {
+  if (index === 0 || index === coordinates.length - 1) {
+    return cloneCoordinate(coordinates[index]!);
+  }
+
+  let lng = 0;
+  let lat = 0;
+  let count = 0;
+
+  for (
+    let sampleIndex = Math.max(0, index - SMOOTHING_WINDOW_RADIUS);
+    sampleIndex <= Math.min(coordinates.length - 1, index + SMOOTHING_WINDOW_RADIUS);
+    sampleIndex += 1
+  ) {
+    lng += coordinates[sampleIndex]![0];
+    lat += coordinates[sampleIndex]![1];
+    count += 1;
+  }
+
+  return [lng / count, lat / count];
+};
+
+const getPerpendicularDistance = (point: Position, start: Position, end: Position) => {
+  const dx = end[0] - start[0];
+  const dy = end[1] - start[1];
+
+  if (dx === 0 && dy === 0) {
+    return Math.hypot(point[0] - start[0], point[1] - start[1]);
+  }
+
+  return Math.abs(dy * point[0] - dx * point[1] + end[0] * start[1] - end[1] * start[0]) / Math.hypot(dx, dy);
+};
+
+const simplifySegment = (coordinates: Position[], epsilon: number): Position[] => {
+  if (coordinates.length <= 2) {
+    return cloneCoordinates(coordinates);
+  }
+
+  const first = coordinates[0]!;
+  const last = coordinates[coordinates.length - 1]!;
+  let maxDistance = 0;
+  let splitIndex = 0;
+
+  for (let index = 1; index < coordinates.length - 1; index += 1) {
+    const distance = getPerpendicularDistance(coordinates[index]!, first, last);
+    if (distance > maxDistance) {
+      maxDistance = distance;
+      splitIndex = index;
+    }
+  }
+
+  if (maxDistance <= epsilon) {
+    return [cloneCoordinate(first), cloneCoordinate(last)];
+  }
+
+  const left = simplifySegment(coordinates.slice(0, splitIndex + 1), epsilon);
+  const right = simplifySegment(coordinates.slice(splitIndex), epsilon);
+  return [...left.slice(0, -1), ...right];
+};
+
+export const smoothFreeDrawCoordinates = (coordinates: Position[]) => {
+  if (coordinates.length <= 2) {
+    return cloneCoordinates(coordinates);
+  }
+
+  return coordinates.map((_, index) => getSmoothedCoordinate(coordinates, index));
+};
+
+export const simplifyFreeDrawCoordinates = (coordinates: Position[], epsilon = FREE_DRAW_SIMPLIFY_EPSILON) => {
+  if (coordinates.length <= 2) {
+    return cloneCoordinates(coordinates);
+  }
+
+  return simplifySegment(coordinates, epsilon);
+};
+
+export const processFreeDrawCoordinates = (coordinates: Position[]) => {
+  const smoothed = smoothFreeDrawCoordinates(coordinates);
+  const simplified = simplifyFreeDrawCoordinates(smoothed);
+  return simplified.length >= 2 ? simplified : smoothed.slice(0, 2);
+};
+
 export const isFreeDrawObject = (object: MapcraftObject | null) => {
   if (!object) {
     return false;

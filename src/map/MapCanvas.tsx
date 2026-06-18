@@ -44,6 +44,7 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
   const [previewObjectGeometry, setPreviewObjectGeometry] = useState<Geometry | null>(null);
   const [freeDrawScreenPoints, setFreeDrawScreenPoints] = useState<ScreenPoint[]>([]);
   const [isFreeDrawing, setIsFreeDrawing] = useState(false);
+  const [erasedObjectIds, setErasedObjectIds] = useState<string[]>([]);
   const {
     currentTool,
     project,
@@ -51,6 +52,7 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
     selectedObjectId,
     setViewport,
     addObjectToSelectedLayer,
+    deleteObjectsByIds,
     selectObject,
     updateSelectedObjectGeometry,
   } = useEditorStore(
@@ -61,6 +63,7 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       selectedObjectId: state.selectedObjectId,
       setViewport: state.setViewport,
       addObjectToSelectedLayer: state.addObjectToSelectedLayer,
+      deleteObjectsByIds: state.deleteObjectsByIds,
       selectObject: state.selectObject,
       updateSelectedObjectGeometry: state.updateSelectedObjectGeometry,
     })),
@@ -101,8 +104,17 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
   }, [dragObjectId, previewGeometry, previewObjectGeometry, selectedObjectId]);
 
   const objectsGeoJson = useMemo(
-    () => projectToFeatureCollection(project.layers, selectedObjectId, hoverObjectId, geometryOverrides),
-    [geometryOverrides, hoverObjectId, project.layers, selectedObjectId],
+    () =>
+      projectToFeatureCollection(
+        project.layers.map((layer) => ({
+          ...layer,
+          objects: layer.objects.filter((object) => !erasedObjectIds.includes(object.id)),
+        })),
+        selectedObjectId,
+        hoverObjectId,
+        geometryOverrides,
+      ),
+    [erasedObjectIds, geometryOverrides, hoverObjectId, project.layers, selectedObjectId],
   );
 
   const closeToStart = useMemo(() => {
@@ -180,6 +192,8 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
   const dragMovedRef = useRef(false);
   const freeDrawScreenPointsRef = useRef<ScreenPoint[]>(freeDrawScreenPoints);
   const isFreeDrawingRef = useRef(isFreeDrawing);
+  const isErasingRef = useRef(false);
+  const erasedObjectIdsRef = useRef<Set<string>>(new Set());
   const closeToStartRef = useRef(closeToStart);
   const mapDraggingRef = useRef(false);
 
@@ -203,6 +217,7 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
     previewObjectGeometryRef.current = previewObjectGeometry;
     freeDrawScreenPointsRef.current = freeDrawScreenPoints;
     isFreeDrawingRef.current = isFreeDrawing;
+    erasedObjectIdsRef.current = new Set(erasedObjectIds);
     closeToStartRef.current = closeToStart;
   }, [
     closeToStart,
@@ -212,6 +227,7 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
     dragObjectId,
     dragVertexIndex,
     editGeoJson,
+    erasedObjectIds,
     hoverObjectId,
     hoverVertexIndex,
     isFreeDrawing,
@@ -336,6 +352,7 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       selectObjectRef,
       updateSelectedObjectGeometryRef,
       addObjectToSelectedLayer,
+      deleteObjectsByIds,
       draftCoordinatesRef,
       closeToStartRef,
       hoverVertexIndexRef,
@@ -349,6 +366,8 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       dragMovedRef,
       freeDrawScreenPointsRef,
       isFreeDrawingRef,
+      isErasingRef,
+      erasedObjectIdsRef,
       setDraftCoordinates,
       setHoverCoordinate,
       setHoverVertexIndex,
@@ -359,6 +378,7 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       setPreviewObjectGeometry,
       setFreeDrawScreenPoints,
       setIsFreeDrawing,
+      setErasedObjectIds,
       updateCanvasCursor,
       resetVertexEditing,
       resetFreeDraw,
@@ -374,7 +394,7 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       map.remove();
       mapRef.current = null;
     };
-  }, [addObjectToSelectedLayer]);
+  }, [addObjectToSelectedLayer, deleteObjectsByIds]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -465,6 +485,15 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
         map.dragPan.enable();
       }
     }
+
+    if (currentTool !== 'eraser') {
+      isErasingRef.current = false;
+      erasedObjectIdsRef.current = new Set();
+      setErasedObjectIds([]);
+      if (!map.dragPan.isEnabled() && dragVertexIndex === null && dragObjectId === null) {
+        map.dragPan.enable();
+      }
+    }
   }, [currentTool, dragObjectId, dragVertexIndex, hoverObjectId, hoverVertexIndex]);
 
   useEffect(() => {
@@ -531,6 +560,11 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       {currentTool === 'freeDraw' && (
         <div className="pointer-events-none absolute left-3 top-3 rounded-md border border-white/10 bg-slate-950/60 px-3 py-2 text-xs text-white shadow-[0_4px_10px_rgba(15,23,42,0.18)]">
           Drag to sketch a freehand line.
+        </div>
+      )}
+      {currentTool === 'eraser' && (
+        <div className="pointer-events-none absolute left-3 top-3 rounded-md border border-white/10 bg-slate-950/60 px-3 py-2 text-xs text-white shadow-[0_4px_10px_rgba(15,23,42,0.18)]">
+          Drag across free draw strokes to erase them.
         </div>
       )}
     </div>

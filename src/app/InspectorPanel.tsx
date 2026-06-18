@@ -1,5 +1,6 @@
 import { Copy, Trash2 } from 'lucide-react';
 
+import { isFreeDrawObject } from '../lib/project';
 import type { MapcraftObject } from '../types/project';
 
 interface InspectorPanelProps {
@@ -33,7 +34,7 @@ export function InspectorPanel({
       ) : (
         <div className="space-y-4">
           <div className="rounded-md border border-border bg-panelAlt px-3 py-3 text-xs text-muted">
-            <div className="font-medium text-foreground">{object.type}</div>
+            <div className="font-medium text-foreground">{isFreeDrawObject(object) ? 'free draw stroke' : object.type}</div>
             <div className="mt-1 break-all text-subtle">{object.id}</div>
           </div>
 

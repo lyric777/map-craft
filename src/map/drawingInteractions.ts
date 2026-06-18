@@ -6,6 +6,7 @@ import {
   createLineObject,
   createPointObject,
   createPolygonObject,
+  processFreeDrawCoordinates,
 } from '../lib/project';
 import { FREE_DRAW_POINT_THRESHOLD } from './constants';
 import type { MapInteractionBindings } from './interactionBindings';
@@ -20,10 +21,14 @@ export const createDrawingHandlers = ({
   dragMovedRef,
   freeDrawScreenPointsRef,
   isFreeDrawingRef,
+  isErasingRef,
+  erasedObjectIdsRef,
+  deleteObjectsByIds,
   setDraftCoordinates,
   setHoverCoordinate,
   setFreeDrawScreenPoints,
   setIsFreeDrawing,
+  setErasedObjectIds,
   updateCanvasCursor,
   resetFreeDraw,
 }: MapInteractionBindings) => {
@@ -54,7 +59,7 @@ export const createDrawingHandlers = ({
   };
 
   const handleMapClick = (event: MapMouseEvent) => {
-    if (currentToolRef.current === 'freeDraw' || currentToolRef.current === 'move') {
+    if (currentToolRef.current === 'freeDraw' || currentToolRef.current === 'move' || currentToolRef.current === 'eraser') {
       return false;
     }
 
@@ -85,6 +90,35 @@ export const createDrawingHandlers = ({
   };
 
   const handleMouseDown = (event: MapMouseEvent) => {
+    if (currentToolRef.current === 'eraser') {
+      isErasingRef.current = true;
+      if (erasedObjectIdsRef.current.size > 0) {
+        erasedObjectIdsRef.current = new Set();
+        setErasedObjectIds([]);
+      }
+
+      const hitFeatures = map.queryRenderedFeatures(event.point, {
+        layers: ['line-string-hit'],
+      });
+      const nextIds = new Set(erasedObjectIdsRef.current);
+      hitFeatures.forEach((feature) => {
+        const objectId = feature.properties?.objectId;
+        const isFreeDraw = Boolean(feature.properties?.isFreeDraw);
+        if (typeof objectId === 'string' && isFreeDraw) {
+          nextIds.add(objectId);
+        }
+      });
+
+      if (nextIds.size !== erasedObjectIdsRef.current.size) {
+        erasedObjectIdsRef.current = nextIds;
+        setErasedObjectIds([...nextIds]);
+      }
+
+      map.dragPan.disable();
+      updateCanvasCursor();
+      return true;
+    }
+
     if (currentToolRef.current !== 'freeDraw') {
       return false;
     }
@@ -115,6 +149,27 @@ export const createDrawingHandlers = ({
   };
 
   const handleMouseMove = (event: MapMouseEvent) => {
+    if (isErasingRef.current && currentToolRef.current === 'eraser') {
+      const hitFeatures = map.queryRenderedFeatures(event.point, {
+        layers: ['line-string-hit'],
+      });
+      const nextIds = new Set(erasedObjectIdsRef.current);
+      hitFeatures.forEach((feature) => {
+        const objectId = feature.properties?.objectId;
+        const isFreeDraw = Boolean(feature.properties?.isFreeDraw);
+        if (typeof objectId === 'string' && isFreeDraw) {
+          nextIds.add(objectId);
+        }
+      });
+
+      if (nextIds.size !== erasedObjectIdsRef.current.size) {
+        erasedObjectIdsRef.current = nextIds;
+        setErasedObjectIds([...nextIds]);
+      }
+
+      return true;
+    }
+
     if (isFreeDrawingRef.current && currentToolRef.current === 'freeDraw') {
       const previousPoint = freeDrawScreenPointsRef.current.at(-1);
       if (!previousPoint) {
@@ -146,6 +201,23 @@ export const createDrawingHandlers = ({
   };
 
   const handleMouseUp = () => {
+    if (isErasingRef.current && currentToolRef.current === 'eraser') {
+      const erasedIds = [...erasedObjectIdsRef.current];
+      isErasingRef.current = false;
+
+      if (erasedIds.length > 0) {
+        deleteObjectsByIds(erasedIds);
+      }
+
+      erasedObjectIdsRef.current = new Set();
+      setErasedObjectIds([]);
+      if (!map.dragPan.isEnabled()) {
+        map.dragPan.enable();
+      }
+      updateCanvasCursor();
+      return true;
+    }
+
     if (isFreeDrawingRef.current && currentToolRef.current === 'freeDraw') {
       const coordinates = freeDrawScreenPointsRef.current.map(({ x, y }) => {
         const coordinate = map.unproject([x, y]);
@@ -155,7 +227,7 @@ export const createDrawingHandlers = ({
       resetFreeDraw();
 
       if (dragMovedRef.current && coordinates.length >= 2) {
-        addObjectToSelectedLayer(createFreeDrawObject(coordinates));
+        addObjectToSelectedLayer(createFreeDrawObject(processFreeDrawCoordinates(coordinates)));
       }
       return true;
     }

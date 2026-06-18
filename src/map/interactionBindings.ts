@@ -17,6 +17,7 @@ export interface MapInteractionBindings {
   selectObjectRef: WritableRef<(objectId: string | null, layerId?: string | null) => void>;
   updateSelectedObjectGeometryRef: WritableRef<(geometry: Geometry) => void>;
   addObjectToSelectedLayer: (object: MapcraftObject) => void;
+  deleteObjectsByIds: (objectIds: string[]) => void;
   draftCoordinatesRef: WritableRef<Position[]>;
   closeToStartRef: WritableRef<boolean>;
   hoverVertexIndexRef: WritableRef<number | null>;
@@ -30,6 +31,8 @@ export interface MapInteractionBindings {
   dragMovedRef: WritableRef<boolean>;
   freeDrawScreenPointsRef: WritableRef<ScreenPoint[]>;
   isFreeDrawingRef: WritableRef<boolean>;
+  isErasingRef: WritableRef<boolean>;
+  erasedObjectIdsRef: WritableRef<Set<string>>;
   setDraftCoordinates: Dispatch<SetStateAction<Position[]>>;
   setHoverCoordinate: Dispatch<SetStateAction<Position | null>>;
   setHoverVertexIndex: Dispatch<SetStateAction<number | null>>;
@@ -40,6 +43,7 @@ export interface MapInteractionBindings {
   setPreviewObjectGeometry: Dispatch<SetStateAction<Geometry | null>>;
   setFreeDrawScreenPoints: Dispatch<SetStateAction<ScreenPoint[]>>;
   setIsFreeDrawing: Dispatch<SetStateAction<boolean>>;
+  setErasedObjectIds: Dispatch<SetStateAction<string[]>>;
   updateCanvasCursor: () => void;
   resetVertexEditing: () => void;
   resetFreeDraw: () => void;

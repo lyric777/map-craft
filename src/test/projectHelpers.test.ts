@@ -5,7 +5,10 @@ import {
   createFreeDrawObject,
   createLineObject,
   getEditableVertices,
+  processFreeDrawCoordinates,
   projectToFeatureCollection,
+  simplifyFreeDrawCoordinates,
+  smoothFreeDrawCoordinates,
   translateGeometry,
 } from '../lib/project';
 
@@ -117,5 +120,26 @@ describe('project helpers', () => {
       isSelected: false,
       isHovered: true,
     });
+  });
+
+  it('smooths and simplifies free draw coordinates while keeping endpoints', () => {
+    const coordinates = [
+      [0, 0],
+      [0.00003, 0.0002],
+      [0.00006, -0.0002],
+      [0.0001, 0.00025],
+      [0.0002, 0],
+    ] as const;
+
+    const smoothed = smoothFreeDrawCoordinates(coordinates as unknown as [number, number][]);
+    const simplified = simplifyFreeDrawCoordinates(smoothed);
+    const processed = processFreeDrawCoordinates(coordinates as unknown as [number, number][]);
+
+    expect(smoothed[0]).toEqual([0, 0]);
+    expect(smoothed.at(-1)).toEqual([0.0002, 0]);
+    expect(simplified.length).toBeLessThanOrEqual(smoothed.length);
+    expect(processed[0]).toEqual([0, 0]);
+    expect(processed.at(-1)).toEqual([0.0002, 0]);
+    expect(processed.length).toBeGreaterThanOrEqual(2);
   });
 });

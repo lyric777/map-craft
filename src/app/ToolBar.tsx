@@ -1,4 +1,4 @@
-import { Hand, MapPin, PenTool, Route, Shapes } from 'lucide-react';
+import { Eraser, Hand, MapPin, PenTool, Route, Shapes } from 'lucide-react';
 import { useState } from 'react';
 
 import { TOOL_LABELS } from '../tools/tools';
@@ -12,6 +12,7 @@ interface ToolBarProps {
 const tools: { id: ToolId; icon: typeof Hand; disabled?: boolean }[] = [
   { id: 'move', icon: Hand },
   { id: 'freeDraw', icon: PenTool },
+  { id: 'eraser', icon: Eraser },
   { id: 'point', icon: MapPin },
   { id: 'line', icon: Route },
   { id: 'polygon', icon: Shapes },

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { getCursorForState } from '../map/cursor';
+import { ERASER_CURSOR, getCursorForState } from '../map/cursor';
 
 describe('map cursor state', () => {
   it('uses crosshair for drawing tools', () => {
@@ -25,6 +25,19 @@ describe('map cursor state', () => {
         isObjectDragging: false,
       }),
     ).toBe('crosshair');
+  });
+
+  it('uses a dedicated eraser cursor for the eraser tool', () => {
+    expect(
+      getCursorForState({
+        tool: 'eraser',
+        isMapDragging: false,
+        isVertexHovering: false,
+        isVertexDragging: false,
+        isObjectHovering: false,
+        isObjectDragging: false,
+      }),
+    ).toBe(ERASER_CURSOR);
   });
 
   it('uses grab and grabbing for move interactions', () => {

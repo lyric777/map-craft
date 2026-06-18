@@ -140,4 +140,23 @@ describe('editor store', () => {
       ],
     });
   });
+
+  it('deletes multiple objects by id in one operation', () => {
+    const store = useEditorStore.getState();
+    const freeDraw = createFreeDrawObject([
+      [0, 0],
+      [1, 1],
+    ]);
+    const line = createLineObject([
+      [2, 2],
+      [3, 3],
+    ]);
+    store.addObjectToSelectedLayer(freeDraw);
+    store.addObjectToSelectedLayer(line);
+
+    store.deleteObjectsByIds([freeDraw.id, line.id]);
+
+    expect(useEditorStore.getState().project.layers[0]?.objects).toHaveLength(0);
+    expect(useEditorStore.getState().selectedObjectId).toBeNull();
+  });
 });
