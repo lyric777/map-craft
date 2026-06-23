@@ -1,7 +1,7 @@
 import type { MapcraftLayer, MapcraftObject, MapcraftProject, ToolId } from '../types/project';
 import { create } from 'zustand';
 
-import { createDefaultLayer, createEmptyProject, duplicateObject } from '../lib/project';
+import { createDefaultLayer, createEmptyProject, duplicateObject, getSourceObjectId } from '../lib/project';
 
 interface EditorSnapshot {
   project: MapcraftProject;
@@ -203,10 +203,30 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
       const replacementMap = new Map(replacements.map((entry) => [entry.objectId, entry.objects]));
       draft.project.layers.forEach((layer) => {
-        layer.objects = layer.objects.flatMap((candidate) => replacementMap.get(candidate.id) ?? [candidate]);
+        const consumedSourceIds = new Set<string>();
+        layer.objects = layer.objects.flatMap((candidate) => {
+          const sourceObjectId = getSourceObjectId(candidate);
+          const replacementObjects = replacementMap.get(sourceObjectId) ?? replacementMap.get(candidate.id);
+
+          if (!replacementObjects) {
+            return [candidate];
+          }
+
+          if (consumedSourceIds.has(sourceObjectId)) {
+            return [];
+          }
+
+          consumedSourceIds.add(sourceObjectId);
+          return replacementObjects;
+        });
       });
 
-      if (draft.selectedObjectId && replacementMap.has(draft.selectedObjectId)) {
+      if (
+        draft.selectedObjectId &&
+        draft.project.layers.every((layer) =>
+          layer.objects.every((candidate) => candidate.id !== draft.selectedObjectId),
+        )
+      ) {
         draft.selectedObjectId = null;
       }
     }),

@@ -20,6 +20,10 @@ interface ScreenPointLike {
   y: number;
 }
 
+const ERASER_TRIM_SAMPLES = 24;
+const ERASER_TRIM_BINARY_STEPS = 12;
+const ERASER_TRIM_EPSILON = 0.000001;
+
 const EMPTY_FEATURE_COLLECTION: FeatureCollection<Geometry> = {
   type: 'FeatureCollection',
   features: [],
@@ -215,6 +219,15 @@ const getScreenPointToSegmentDistance = (
   return Math.hypot(point.x - nearestX, point.y - nearestY);
 };
 
+const getDistanceToEraserPath = (point: ScreenPointLike, eraserPath: ScreenPointLike[]) => {
+  if (eraserPath.length <= 1) {
+    const anchor = eraserPath[0]!;
+    return Math.hypot(point.x - anchor.x, point.y - anchor.y);
+  }
+
+  return getScreenPointToSegmentDistance(point, eraserPath[0]!, eraserPath[eraserPath.length - 1]!);
+};
+
 const getOrientation = (a: ScreenPointLike, b: ScreenPointLike, c: ScreenPointLike) => {
   const value = (b.y - a.y) * (c.x - b.x) - (b.x - a.x) * (c.y - b.y);
   if (Math.abs(value) < 0.000001) {
@@ -306,6 +319,113 @@ const segmentTouchesEraserPath = (
   return false;
 };
 
+const interpolateScreenPoint = (start: ScreenPointLike, end: ScreenPointLike, t: number): ScreenPointLike => ({
+  x: start.x + (end.x - start.x) * t,
+  y: start.y + (end.y - start.y) * t,
+});
+
+const interpolateCoordinate = (start: Position, end: Position, t: number): Position => [
+  start[0] + (end[0] - start[0]) * t,
+  start[1] + (end[1] - start[1]) * t,
+];
+
+const refineEraserBoundaryT = (
+  segmentStart: ScreenPointLike,
+  segmentEnd: ScreenPointLike,
+  eraserPath: ScreenPointLike[],
+  eraseRadiusPx: number,
+  tStart: number,
+  tEnd: number,
+  startInside: boolean,
+) => {
+  let low = tStart;
+  let high = tEnd;
+
+  for (let step = 0; step < ERASER_TRIM_BINARY_STEPS; step += 1) {
+    const mid = (low + high) / 2;
+    const inside = getDistanceToEraserPath(
+      interpolateScreenPoint(segmentStart, segmentEnd, mid),
+      eraserPath,
+    ) <= eraseRadiusPx;
+
+    if (inside === startInside) {
+      low = mid;
+    } else {
+      high = mid;
+    }
+  }
+
+  return (low + high) / 2;
+};
+
+const trimLineSegmentByEraser = (
+  coordinateStart: Position,
+  coordinateEnd: Position,
+  projectedStart: ScreenPointLike,
+  projectedEnd: ScreenPointLike,
+  eraserPath: ScreenPointLike[],
+  eraseRadiusPx: number,
+) => {
+  if (!segmentTouchesEraserPath(projectedStart, projectedEnd, eraserPath, eraseRadiusPx)) {
+    return [[cloneCoordinate(coordinateStart), cloneCoordinate(coordinateEnd)]];
+  }
+
+  const samples = Array.from({ length: ERASER_TRIM_SAMPLES + 1 }, (_, index) => index / ERASER_TRIM_SAMPLES);
+  const insideStates = samples.map(
+    (t) => getDistanceToEraserPath(interpolateScreenPoint(projectedStart, projectedEnd, t), eraserPath) <= eraseRadiusPx,
+  );
+
+  if (insideStates.every(Boolean)) {
+    return [];
+  }
+
+  const intervals: Array<{ inside: boolean; start: number; end: number }> = [];
+  let currentInside = insideStates[0]!;
+  let intervalStart = 0;
+
+  for (let index = 1; index < samples.length; index += 1) {
+    const nextInside = insideStates[index]!;
+    if (nextInside === currentInside) {
+      continue;
+    }
+
+    const boundary = refineEraserBoundaryT(
+      projectedStart,
+      projectedEnd,
+      eraserPath,
+      eraseRadiusPx,
+      samples[index - 1]!,
+      samples[index]!,
+      currentInside,
+    );
+
+    intervals.push({
+      inside: currentInside,
+      start: intervalStart,
+      end: boundary,
+    });
+    currentInside = nextInside;
+    intervalStart = boundary;
+  }
+
+  intervals.push({
+    inside: currentInside,
+    start: intervalStart,
+    end: 1,
+  });
+
+  return intervals
+    .filter((interval) => !interval.inside && interval.end - interval.start > ERASER_TRIM_EPSILON)
+    .map((interval) => [
+      interpolateCoordinate(coordinateStart, coordinateEnd, interval.start),
+      interpolateCoordinate(coordinateStart, coordinateEnd, interval.end),
+    ]);
+};
+
+const coordinatesAlmostEqual = (left: Position, right: Position) =>
+  Math.abs(left[0] - right[0]) <= ERASER_TRIM_EPSILON &&
+  Math.abs(left[1] - right[1]) <= ERASER_TRIM_EPSILON;
+
 export const eraseLineStringCoordinates = (
   coordinates: Position[],
   projectedCoordinates: ScreenPointLike[],
@@ -328,9 +448,16 @@ export const eraseLineStringCoordinates = (
     const coordinateEnd = coordinates[index + 1]!;
     const projectedStart = projectedCoordinates[index]!;
     const projectedEnd = projectedCoordinates[index + 1]!;
-    const shouldErase = segmentTouchesEraserPath(projectedStart, projectedEnd, eraserPath, eraseRadiusPx);
+    const trimmedPieces = trimLineSegmentByEraser(
+      coordinateStart,
+      coordinateEnd,
+      projectedStart,
+      projectedEnd,
+      eraserPath,
+      eraseRadiusPx,
+    );
 
-    if (shouldErase) {
+    if (trimmedPieces.length === 0) {
       didErase = true;
       if (currentSegment.length >= 2) {
         keptSegments.push(currentSegment);
@@ -339,11 +466,35 @@ export const eraseLineStringCoordinates = (
       continue;
     }
 
-    if (currentSegment.length === 0) {
-      currentSegment.push(cloneCoordinate(coordinateStart));
+    if (
+      trimmedPieces.length !== 1 ||
+      !coordinatesAlmostEqual(trimmedPieces[0]![0]!, coordinateStart) ||
+      !coordinatesAlmostEqual(trimmedPieces[0]![1]!, coordinateEnd)
+    ) {
+      didErase = true;
     }
 
-    currentSegment.push(cloneCoordinate(coordinateEnd));
+    trimmedPieces.forEach((piece, pieceIndex) => {
+      const [pieceStart, pieceEnd] = piece;
+
+      if (currentSegment.length === 0) {
+        currentSegment.push(cloneCoordinate(pieceStart));
+      } else if (!coordinatesAlmostEqual(currentSegment[currentSegment.length - 1]!, pieceStart)) {
+        if (currentSegment.length >= 2) {
+          keptSegments.push(currentSegment);
+        }
+        currentSegment = [cloneCoordinate(pieceStart)];
+      }
+
+      currentSegment.push(cloneCoordinate(pieceEnd));
+
+      if (pieceIndex < trimmedPieces.length - 1) {
+        if (currentSegment.length >= 2) {
+          keptSegments.push(currentSegment);
+        }
+        currentSegment = [];
+      }
+    });
   }
 
   if (currentSegment.length >= 2) {

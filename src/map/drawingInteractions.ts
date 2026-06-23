@@ -72,7 +72,7 @@ export const createDrawingHandlers = ({
         replacementMap.get(sourceObjectId) ??
         projectLayersRef.current
           .flatMap((layer) => layer.objects)
-          .filter((candidate) => candidate.id === sourceObjectId);
+          .filter((candidate) => getSourceObjectId(candidate) === sourceObjectId);
 
       if (baseObjects.length === 0) {
         return;

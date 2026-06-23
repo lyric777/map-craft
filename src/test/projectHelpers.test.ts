@@ -159,16 +159,29 @@ describe('project helpers', () => {
     const result = eraseLineStringCoordinates(coordinates, projected, eraserPath, 0.25);
 
     expect(result.didErase).toBe(true);
-    expect(result.segments).toEqual([
-      [
-        [0, 0],
-        [1, 0],
-      ],
-      [
-        [3, 0],
-        [4, 0],
-      ],
-    ]);
+    expect(result.segments).toHaveLength(2);
+    expect(result.segments[0]![0]).toEqual([0, 0]);
+    expect(result.segments[0]!.at(-1)![0]).toBeCloseTo(1.75, 2);
+    expect(result.segments[1]![0][0]).toBeCloseTo(2.25, 2);
+    expect(result.segments[1]!.at(-1)).toEqual([4, 0]);
+  });
+
+  it('trims only the intersecting portion of a long segment instead of deleting the whole segment', () => {
+    const coordinates = [
+      [0, 0],
+      [10, 0],
+    ] as [number, number][];
+    const projected = coordinates.map(([x, y]) => ({ x, y }));
+    const eraserPath = [{ x: 5, y: 0 }];
+
+    const result = eraseLineStringCoordinates(coordinates, projected, eraserPath, 1);
+
+    expect(result.didErase).toBe(true);
+    expect(result.segments).toHaveLength(2);
+    expect(result.segments[0]![0]).toEqual([0, 0]);
+    expect(result.segments[0]![1][0]).toBeCloseTo(4, 2);
+    expect(result.segments[1]![0][0]).toBeCloseTo(6, 2);
+    expect(result.segments[1]![1]).toEqual([10, 0]);
   });
 
   it('preserves free draw style and metadata when erasing into smaller strokes', () => {
@@ -197,21 +210,47 @@ describe('project helpers', () => {
       segments?.every((segment) => (segment.meta as Record<string, unknown>)['sourceObjectId'] === object.id),
     ).toBe(true);
     expect(segments?.every((segment) => segment.style.strokeColor === '#123456')).toBe(true);
-    expect(segments?.map((segment) => segment.geometry)).toEqual([
-      {
-        type: 'LineString',
-        coordinates: [
-          [0, 0],
-          [1, 0],
-        ],
-      },
-      {
-        type: 'LineString',
-        coordinates: [
-          [3, 0],
-          [4, 0],
-        ],
-      },
+    expect(segments?.map((segment) => segment.geometry.type)).toEqual(['LineString', 'LineString']);
+    expect(segments?.[0]?.geometry.coordinates[0]).toEqual([0, 0]);
+    expect(segments?.[0]?.geometry.coordinates.at(-1)?.[0]).toBeCloseTo(1.75, 2);
+    expect(segments?.[1]?.geometry.coordinates[0]?.[0]).toBeCloseTo(2.25, 2);
+    expect(segments?.[1]?.geometry.coordinates.at(-1)).toEqual([4, 0]);
+  });
+
+  it('keeps the original sourceObjectId when erasing an already-split free draw segment again', () => {
+    const object = createFreeDrawObject([
+      [0, 0],
+      [1, 0],
+      [2, 0],
+      [3, 0],
+      [4, 0],
+      [5, 0],
+      [6, 0],
     ]);
+
+    const firstPass = eraseFreeDrawObject(
+      object,
+      ([x, y]) => ({ x, y }),
+      [{ x: 3, y: 0 }],
+      0.25,
+    );
+
+    const leftSegment = firstPass?.[0];
+    expect(leftSegment).toBeDefined();
+
+    const secondPass = eraseFreeDrawObject(
+      leftSegment!,
+      ([x, y]) => ({ x, y }),
+      [{ x: 0.5, y: 0 }],
+      0.2,
+    );
+
+    expect(secondPass).toHaveLength(2);
+    expect(
+      (secondPass?.[0].meta as Record<string, unknown>)['sourceObjectId'],
+    ).toBe(object.id);
+    expect(
+      (secondPass?.[1].meta as Record<string, unknown>)['sourceObjectId'],
+    ).toBe(object.id);
   });
 });

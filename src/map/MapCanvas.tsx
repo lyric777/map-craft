@@ -12,6 +12,7 @@ import {
   draftPolygonToFeatureCollection,
   freeDrawToFeatureCollection,
   getEditableVertices,
+  getSourceObjectId,
   projectToFeatureCollection,
   vertexHandlesToFeatureCollection,
 } from '../lib/project';
@@ -21,7 +22,6 @@ import {
   DRAFT_SOURCE_ID,
   EDIT_SOURCE_ID,
   EMPTY_GEOJSON,
-  ERASER_RADIUS_PX,
   OBJECTS_SOURCE_ID,
 } from './constants';
 import { bindMapInteractions } from './interactions';
@@ -113,10 +113,28 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
         eraserPreviewReplacements.map((entry) => [entry.objectId, entry.objects] as const),
       );
 
-      const previewLayers = project.layers.map((layer) => ({
-        ...layer,
-        objects: layer.objects.flatMap((object) => replacementMap.get(object.id) ?? [object]),
-      }));
+      const previewLayers = project.layers.map((layer) => {
+        const consumedSourceIds = new Set<string>();
+
+        return {
+          ...layer,
+          objects: layer.objects.flatMap((object) => {
+            const sourceObjectId = getSourceObjectId(object);
+            const replacementObjects = replacementMap.get(sourceObjectId) ?? replacementMap.get(object.id);
+
+            if (!replacementObjects) {
+              return [object];
+            }
+
+            if (consumedSourceIds.has(sourceObjectId)) {
+              return [];
+            }
+
+            consumedSourceIds.add(sourceObjectId);
+            return replacementObjects;
+          }),
+        };
+      });
 
       return projectToFeatureCollection(previewLayers, selectedObjectId, hoverObjectId, geometryOverrides);
     },
@@ -201,7 +219,6 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
   const isFreeDrawingRef = useRef(isFreeDrawing);
   const isErasingRef = useRef(false);
   const eraserPreviewReplacementsRef = useRef(eraserPreviewReplacements);
-  const eraserIndicatorRef = useRef<HTMLDivElement | null>(null);
   const closeToStartRef = useRef(closeToStart);
   const mapDraggingRef = useRef(false);
 
@@ -354,26 +371,6 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       updateCanvasCursor();
     });
 
-    const canvasContainer = map.getCanvasContainer();
-    const handleCanvasMouseMove = (event: MouseEvent) => {
-      const indicator = eraserIndicatorRef.current;
-      if (currentToolRef.current !== 'eraser' || !indicator) {
-        return;
-      }
-
-      const bounds = canvasContainer.getBoundingClientRect();
-      indicator.style.opacity = '1';
-      indicator.style.transform = `translate(${event.clientX - bounds.left}px, ${event.clientY - bounds.top}px) translate(-50%, -50%)`;
-    };
-    const handleCanvasMouseLeave = () => {
-      if (eraserIndicatorRef.current) {
-        eraserIndicatorRef.current.style.opacity = '0';
-      }
-    };
-
-    canvasContainer.addEventListener('mousemove', handleCanvasMouseMove);
-    canvasContainer.addEventListener('mouseleave', handleCanvasMouseLeave);
-
     const detachInteractions = bindMapInteractions({
       map,
       currentToolRef,
@@ -421,8 +418,6 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
 
     return () => {
       detachInteractions();
-      canvasContainer.removeEventListener('mousemove', handleCanvasMouseMove);
-      canvasContainer.removeEventListener('mouseleave', handleCanvasMouseLeave);
       map.getCanvasContainer().style.cursor = '';
       map.remove();
       mapRef.current = null;
@@ -523,14 +518,9 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       isErasingRef.current = false;
       eraserPreviewReplacementsRef.current = [];
       setEraserPreviewReplacements([]);
-      if (eraserIndicatorRef.current) {
-        eraserIndicatorRef.current.style.opacity = '0';
-      }
       if (!map.dragPan.isEnabled() && dragVertexIndex === null && dragObjectId === null) {
         map.dragPan.enable();
       }
-    } else if (eraserIndicatorRef.current) {
-      eraserIndicatorRef.current.style.opacity = '1';
     }
   }, [currentTool, dragObjectId, dragVertexIndex, hoverObjectId, hoverVertexIndex]);
 
@@ -605,16 +595,6 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
           Drag across free draw strokes to erase them.
         </div>
       )}
-      <div
-        ref={eraserIndicatorRef}
-        className="pointer-events-none absolute rounded-full border border-white/85 bg-transparent opacity-0"
-        style={{
-          width: ERASER_RADIUS_PX * 2,
-          height: ERASER_RADIUS_PX * 2,
-          boxShadow: '0 0 0 1px rgba(15, 23, 42, 0.85)',
-          transform: 'translate(-50%, -50%)',
-        }}
-      />
     </div>
   );
 }

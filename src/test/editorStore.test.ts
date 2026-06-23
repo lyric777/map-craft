@@ -186,4 +186,35 @@ describe('editor store', () => {
     expect(objects.map((object) => object.id)).toEqual([left.id, right.id]);
     expect(useEditorStore.getState().selectedObjectId).toBeNull();
   });
+
+  it('replaces split free draw segments by shared sourceObjectId in one operation', () => {
+    const store = useEditorStore.getState();
+    const firstSegment = createFreeDrawObject([
+      [0, 0],
+      [1, 0],
+    ]);
+    firstSegment.meta.sourceObjectId = 'root-free-draw';
+
+    const secondSegment = createFreeDrawObject([
+      [2, 0],
+      [3, 0],
+    ]);
+    secondSegment.meta.sourceObjectId = 'root-free-draw';
+
+    store.addObjectToSelectedLayer(firstSegment);
+    store.addObjectToSelectedLayer(secondSegment);
+
+    const remainingSegment = createFreeDrawObject([
+      [2.5, 0],
+      [3, 0],
+    ]);
+    remainingSegment.meta.sourceObjectId = 'root-free-draw';
+
+    store.replaceObjectsById([{ objectId: 'root-free-draw', objects: [remainingSegment] }]);
+
+    const objects = useEditorStore.getState().project.layers[0]?.objects ?? [];
+    expect(objects).toHaveLength(1);
+    expect(objects[0]?.id).toBe(remainingSegment.id);
+    expect(objects[0]?.meta.sourceObjectId).toBe('root-free-draw');
+  });
 });
