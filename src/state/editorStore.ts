@@ -27,6 +27,7 @@ interface EditorState extends EditorSnapshot {
   updateSelectedObjectStyle: (style: Partial<MapcraftObject['style']>) => void;
   updateSelectedObjectGeometry: (geometry: MapcraftObject['geometry']) => void;
   deleteObjectsByIds: (objectIds: string[]) => void;
+  replaceObjectsById: (replacements: Array<{ objectId: string; objects: MapcraftObject[] }>) => void;
   deleteSelectedObject: () => void;
   duplicateSelectedObject: () => void;
   undo: () => void;
@@ -191,6 +192,21 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       });
 
       if (draft.selectedObjectId && deleted.has(draft.selectedObjectId)) {
+        draft.selectedObjectId = null;
+      }
+    }),
+  replaceObjectsById: (replacements) =>
+    mutateWithHistory(set, get, (draft) => {
+      if (replacements.length === 0) {
+        return;
+      }
+
+      const replacementMap = new Map(replacements.map((entry) => [entry.objectId, entry.objects]));
+      draft.project.layers.forEach((layer) => {
+        layer.objects = layer.objects.flatMap((candidate) => replacementMap.get(candidate.id) ?? [candidate]);
+      });
+
+      if (draft.selectedObjectId && replacementMap.has(draft.selectedObjectId)) {
         draft.selectedObjectId = null;
       }
     }),

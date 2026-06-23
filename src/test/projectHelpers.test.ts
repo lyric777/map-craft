@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  eraseFreeDrawObject,
+  eraseLineStringCoordinates,
   createDefaultLayer,
   createFreeDrawObject,
   createLineObject,
@@ -141,5 +143,75 @@ describe('project helpers', () => {
     expect(processed[0]).toEqual([0, 0]);
     expect(processed.at(-1)).toEqual([0.0002, 0]);
     expect(processed.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('splits free draw coordinates into surviving segments when erased through the middle', () => {
+    const coordinates = [
+      [0, 0],
+      [1, 0],
+      [2, 0],
+      [3, 0],
+      [4, 0],
+    ] as [number, number][];
+    const projected = coordinates.map(([x, y]) => ({ x, y }));
+    const eraserPath = [{ x: 2, y: 0 }];
+
+    const result = eraseLineStringCoordinates(coordinates, projected, eraserPath, 0.25);
+
+    expect(result.didErase).toBe(true);
+    expect(result.segments).toEqual([
+      [
+        [0, 0],
+        [1, 0],
+      ],
+      [
+        [3, 0],
+        [4, 0],
+      ],
+    ]);
+  });
+
+  it('preserves free draw style and metadata when erasing into smaller strokes', () => {
+    const object = createFreeDrawObject([
+      [0, 0],
+      [1, 0],
+      [2, 0],
+      [3, 0],
+      [4, 0],
+    ]);
+    object.style.strokeColor = '#123456';
+    object.style.strokeWidth = 5;
+
+    const segments = eraseFreeDrawObject(
+      object,
+      ([x, y]) => ({ x, y }),
+      [{ x: 2, y: 0 }],
+      0.25,
+    );
+
+    expect(segments).toHaveLength(2);
+    expect(
+      segments?.every((segment) => (segment.meta as Record<string, unknown>)['drawingMode'] === 'freeDraw'),
+    ).toBe(true);
+    expect(
+      segments?.every((segment) => (segment.meta as Record<string, unknown>)['sourceObjectId'] === object.id),
+    ).toBe(true);
+    expect(segments?.every((segment) => segment.style.strokeColor === '#123456')).toBe(true);
+    expect(segments?.map((segment) => segment.geometry)).toEqual([
+      {
+        type: 'LineString',
+        coordinates: [
+          [0, 0],
+          [1, 0],
+        ],
+      },
+      {
+        type: 'LineString',
+        coordinates: [
+          [3, 0],
+          [4, 0],
+        ],
+      },
+    ]);
   });
 });

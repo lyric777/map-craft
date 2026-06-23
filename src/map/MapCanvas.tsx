@@ -1,6 +1,7 @@
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 import type { Geometry, Position } from 'geojson';
+import type { MapcraftObject } from '../types/project';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import { useShallow } from 'zustand/react/shallow';
@@ -20,6 +21,7 @@ import {
   DRAFT_SOURCE_ID,
   EDIT_SOURCE_ID,
   EMPTY_GEOJSON,
+  ERASER_RADIUS_PX,
   OBJECTS_SOURCE_ID,
 } from './constants';
 import { bindMapInteractions } from './interactions';
@@ -44,7 +46,9 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
   const [previewObjectGeometry, setPreviewObjectGeometry] = useState<Geometry | null>(null);
   const [freeDrawScreenPoints, setFreeDrawScreenPoints] = useState<ScreenPoint[]>([]);
   const [isFreeDrawing, setIsFreeDrawing] = useState(false);
-  const [erasedObjectIds, setErasedObjectIds] = useState<string[]>([]);
+  const [eraserPreviewReplacements, setEraserPreviewReplacements] = useState<
+    Array<{ objectId: string; objects: MapcraftObject[] }>
+  >([]);
   const {
     currentTool,
     project,
@@ -52,7 +56,7 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
     selectedObjectId,
     setViewport,
     addObjectToSelectedLayer,
-    deleteObjectsByIds,
+    replaceObjectsById,
     selectObject,
     updateSelectedObjectGeometry,
   } = useEditorStore(
@@ -63,7 +67,7 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       selectedObjectId: state.selectedObjectId,
       setViewport: state.setViewport,
       addObjectToSelectedLayer: state.addObjectToSelectedLayer,
-      deleteObjectsByIds: state.deleteObjectsByIds,
+      replaceObjectsById: state.replaceObjectsById,
       selectObject: state.selectObject,
       updateSelectedObjectGeometry: state.updateSelectedObjectGeometry,
     })),
@@ -104,17 +108,19 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
   }, [dragObjectId, previewGeometry, previewObjectGeometry, selectedObjectId]);
 
   const objectsGeoJson = useMemo(
-    () =>
-      projectToFeatureCollection(
-        project.layers.map((layer) => ({
-          ...layer,
-          objects: layer.objects.filter((object) => !erasedObjectIds.includes(object.id)),
-        })),
-        selectedObjectId,
-        hoverObjectId,
-        geometryOverrides,
-      ),
-    [erasedObjectIds, geometryOverrides, hoverObjectId, project.layers, selectedObjectId],
+    () => {
+      const replacementMap = new Map(
+        eraserPreviewReplacements.map((entry) => [entry.objectId, entry.objects] as const),
+      );
+
+      const previewLayers = project.layers.map((layer) => ({
+        ...layer,
+        objects: layer.objects.flatMap((object) => replacementMap.get(object.id) ?? [object]),
+      }));
+
+      return projectToFeatureCollection(previewLayers, selectedObjectId, hoverObjectId, geometryOverrides);
+    },
+    [eraserPreviewReplacements, geometryOverrides, hoverObjectId, project.layers, selectedObjectId],
   );
 
   const closeToStart = useMemo(() => {
@@ -171,6 +177,7 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
 
   const currentToolRef = useRef(currentTool);
   const onMapReadyRef = useRef(onMapReady);
+  const projectLayersRef = useRef(project.layers);
   const selectObjectRef = useRef(selectObject);
   const setViewportRef = useRef(setViewport);
   const updateSelectedObjectGeometryRef = useRef(updateSelectedObjectGeometry);
@@ -193,13 +200,15 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
   const freeDrawScreenPointsRef = useRef<ScreenPoint[]>(freeDrawScreenPoints);
   const isFreeDrawingRef = useRef(isFreeDrawing);
   const isErasingRef = useRef(false);
-  const erasedObjectIdsRef = useRef<Set<string>>(new Set());
+  const eraserPreviewReplacementsRef = useRef(eraserPreviewReplacements);
+  const eraserIndicatorRef = useRef<HTMLDivElement | null>(null);
   const closeToStartRef = useRef(closeToStart);
   const mapDraggingRef = useRef(false);
 
   useEffect(() => {
     currentToolRef.current = currentTool;
     onMapReadyRef.current = onMapReady;
+    projectLayersRef.current = project.layers;
     selectObjectRef.current = selectObject;
     setViewportRef.current = setViewport;
     updateSelectedObjectGeometryRef.current = updateSelectedObjectGeometry;
@@ -217,7 +226,7 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
     previewObjectGeometryRef.current = previewObjectGeometry;
     freeDrawScreenPointsRef.current = freeDrawScreenPoints;
     isFreeDrawingRef.current = isFreeDrawing;
-    erasedObjectIdsRef.current = new Set(erasedObjectIds);
+    eraserPreviewReplacementsRef.current = eraserPreviewReplacements;
     closeToStartRef.current = closeToStart;
   }, [
     closeToStart,
@@ -226,12 +235,13 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
     draftGeoJson,
     dragObjectId,
     dragVertexIndex,
+    eraserPreviewReplacements,
     editGeoJson,
-    erasedObjectIds,
     hoverObjectId,
     hoverVertexIndex,
     isFreeDrawing,
     onMapReady,
+    project.layers,
     objectsGeoJson,
     previewObjectGeometry,
     previewVertices,
@@ -344,15 +354,36 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       updateCanvasCursor();
     });
 
+    const canvasContainer = map.getCanvasContainer();
+    const handleCanvasMouseMove = (event: MouseEvent) => {
+      const indicator = eraserIndicatorRef.current;
+      if (currentToolRef.current !== 'eraser' || !indicator) {
+        return;
+      }
+
+      const bounds = canvasContainer.getBoundingClientRect();
+      indicator.style.opacity = '1';
+      indicator.style.transform = `translate(${event.clientX - bounds.left}px, ${event.clientY - bounds.top}px) translate(-50%, -50%)`;
+    };
+    const handleCanvasMouseLeave = () => {
+      if (eraserIndicatorRef.current) {
+        eraserIndicatorRef.current.style.opacity = '0';
+      }
+    };
+
+    canvasContainer.addEventListener('mousemove', handleCanvasMouseMove);
+    canvasContainer.addEventListener('mouseleave', handleCanvasMouseLeave);
+
     const detachInteractions = bindMapInteractions({
       map,
       currentToolRef,
+      projectLayersRef,
       selectedLayerIdRef,
       selectedObjectRef,
       selectObjectRef,
       updateSelectedObjectGeometryRef,
       addObjectToSelectedLayer,
-      deleteObjectsByIds,
+      replaceObjectsById,
       draftCoordinatesRef,
       closeToStartRef,
       hoverVertexIndexRef,
@@ -367,7 +398,7 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       freeDrawScreenPointsRef,
       isFreeDrawingRef,
       isErasingRef,
-      erasedObjectIdsRef,
+      eraserPreviewReplacementsRef,
       setDraftCoordinates,
       setHoverCoordinate,
       setHoverVertexIndex,
@@ -378,7 +409,7 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       setPreviewObjectGeometry,
       setFreeDrawScreenPoints,
       setIsFreeDrawing,
-      setErasedObjectIds,
+      setEraserPreviewReplacements,
       updateCanvasCursor,
       resetVertexEditing,
       resetFreeDraw,
@@ -390,11 +421,13 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
 
     return () => {
       detachInteractions();
+      canvasContainer.removeEventListener('mousemove', handleCanvasMouseMove);
+      canvasContainer.removeEventListener('mouseleave', handleCanvasMouseLeave);
       map.getCanvasContainer().style.cursor = '';
       map.remove();
       mapRef.current = null;
     };
-  }, [addObjectToSelectedLayer, deleteObjectsByIds]);
+  }, [addObjectToSelectedLayer, replaceObjectsById]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -488,11 +521,16 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
 
     if (currentTool !== 'eraser') {
       isErasingRef.current = false;
-      erasedObjectIdsRef.current = new Set();
-      setErasedObjectIds([]);
+      eraserPreviewReplacementsRef.current = [];
+      setEraserPreviewReplacements([]);
+      if (eraserIndicatorRef.current) {
+        eraserIndicatorRef.current.style.opacity = '0';
+      }
       if (!map.dragPan.isEnabled() && dragVertexIndex === null && dragObjectId === null) {
         map.dragPan.enable();
       }
+    } else if (eraserIndicatorRef.current) {
+      eraserIndicatorRef.current.style.opacity = '1';
     }
   }, [currentTool, dragObjectId, dragVertexIndex, hoverObjectId, hoverVertexIndex]);
 
@@ -567,6 +605,16 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
           Drag across free draw strokes to erase them.
         </div>
       )}
+      <div
+        ref={eraserIndicatorRef}
+        className="pointer-events-none absolute rounded-full border border-white/85 bg-transparent opacity-0"
+        style={{
+          width: ERASER_RADIUS_PX * 2,
+          height: ERASER_RADIUS_PX * 2,
+          boxShadow: '0 0 0 1px rgba(15, 23, 42, 0.85)',
+          transform: 'translate(-50%, -50%)',
+        }}
+      />
     </div>
   );
 }

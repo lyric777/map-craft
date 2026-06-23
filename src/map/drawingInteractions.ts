@@ -2,36 +2,110 @@ import type { Position } from 'geojson';
 import type { MapMouseEvent } from 'maplibre-gl';
 
 import {
+  eraseFreeDrawObject,
   createFreeDrawObject,
   createLineObject,
   createPointObject,
   createPolygonObject,
+  getSourceObjectId,
+  isFreeDrawObject,
   processFreeDrawCoordinates,
 } from '../lib/project';
-import { FREE_DRAW_POINT_THRESHOLD } from './constants';
+import { ERASER_POINT_THRESHOLD, ERASER_RADIUS_PX, FREE_DRAW_POINT_THRESHOLD } from './constants';
 import type { MapInteractionBindings } from './interactionBindings';
+import type { ScreenPoint } from './types';
 
 export const createDrawingHandlers = ({
   map,
   currentToolRef,
+  projectLayersRef,
   selectedLayerIdRef,
   addObjectToSelectedLayer,
+  replaceObjectsById,
   draftCoordinatesRef,
   closeToStartRef,
   dragMovedRef,
   freeDrawScreenPointsRef,
   isFreeDrawingRef,
   isErasingRef,
-  erasedObjectIdsRef,
-  deleteObjectsByIds,
+  eraserPreviewReplacementsRef,
   setDraftCoordinates,
   setHoverCoordinate,
   setFreeDrawScreenPoints,
   setIsFreeDrawing,
-  setErasedObjectIds,
+  setEraserPreviewReplacements,
   updateCanvasCursor,
   resetFreeDraw,
 }: MapInteractionBindings) => {
+  let eraserScreenPoints: ScreenPoint[] = [];
+
+  const appendEraserPoint = (point: ScreenPoint) => {
+    const previousPoint = eraserScreenPoints.at(-1);
+    if (!previousPoint) {
+      eraserScreenPoints = [point];
+      return false;
+    }
+
+    const distance = Math.hypot(point.x - previousPoint.x, point.y - previousPoint.y);
+    if (distance >= ERASER_POINT_THRESHOLD) {
+      eraserScreenPoints = [previousPoint, point];
+      return true;
+    }
+
+    return false;
+  };
+
+  const buildEraserPreviewReplacements = () => {
+    const replacementMap = new Map(
+      eraserPreviewReplacementsRef.current.map((entry) => [entry.objectId, entry.objects] as const),
+    );
+    const sourceObjectIds = new Set([
+      ...replacementMap.keys(),
+      ...projectLayersRef.current
+        .flatMap((layer) => layer.objects)
+        .filter(isFreeDrawObject)
+        .map(getSourceObjectId),
+    ]);
+
+    sourceObjectIds.forEach((sourceObjectId) => {
+      const baseObjects =
+        replacementMap.get(sourceObjectId) ??
+        projectLayersRef.current
+          .flatMap((layer) => layer.objects)
+          .filter((candidate) => candidate.id === sourceObjectId);
+
+      if (baseObjects.length === 0) {
+        return;
+      }
+
+      let didChange = false;
+      const nextObjects = baseObjects.flatMap((object) => {
+        const erasedObjects = eraseFreeDrawObject(
+          object,
+          (coordinate) => {
+            const projected = map.project({ lng: coordinate[0], lat: coordinate[1] });
+            return { x: projected.x, y: projected.y };
+          },
+          eraserScreenPoints,
+          ERASER_RADIUS_PX,
+        );
+
+        if (!erasedObjects) {
+          return [object];
+        }
+
+        didChange = true;
+        return erasedObjects;
+      });
+
+      if (didChange) {
+        replacementMap.set(sourceObjectId, nextObjects);
+      }
+    });
+
+    return [...replacementMap.entries()].map(([objectId, objects]) => ({ objectId, objects }));
+  };
+
   const finishPolygon = () => {
     const coords = draftCoordinatesRef.current;
     const layerId = selectedLayerIdRef.current;
@@ -92,28 +166,7 @@ export const createDrawingHandlers = ({
   const handleMouseDown = (event: MapMouseEvent) => {
     if (currentToolRef.current === 'eraser') {
       isErasingRef.current = true;
-      if (erasedObjectIdsRef.current.size > 0) {
-        erasedObjectIdsRef.current = new Set();
-        setErasedObjectIds([]);
-      }
-
-      const hitFeatures = map.queryRenderedFeatures(event.point, {
-        layers: ['line-string-hit'],
-      });
-      const nextIds = new Set(erasedObjectIdsRef.current);
-      hitFeatures.forEach((feature) => {
-        const objectId = feature.properties?.objectId;
-        const isFreeDraw = Boolean(feature.properties?.isFreeDraw);
-        if (typeof objectId === 'string' && isFreeDraw) {
-          nextIds.add(objectId);
-        }
-      });
-
-      if (nextIds.size !== erasedObjectIdsRef.current.size) {
-        erasedObjectIdsRef.current = nextIds;
-        setErasedObjectIds([...nextIds]);
-      }
-
+      eraserScreenPoints = [{ x: event.point.x, y: event.point.y }];
       map.dragPan.disable();
       updateCanvasCursor();
       return true;
@@ -150,23 +203,12 @@ export const createDrawingHandlers = ({
 
   const handleMouseMove = (event: MapMouseEvent) => {
     if (isErasingRef.current && currentToolRef.current === 'eraser') {
-      const hitFeatures = map.queryRenderedFeatures(event.point, {
-        layers: ['line-string-hit'],
-      });
-      const nextIds = new Set(erasedObjectIdsRef.current);
-      hitFeatures.forEach((feature) => {
-        const objectId = feature.properties?.objectId;
-        const isFreeDraw = Boolean(feature.properties?.isFreeDraw);
-        if (typeof objectId === 'string' && isFreeDraw) {
-          nextIds.add(objectId);
-        }
-      });
-
-      if (nextIds.size !== erasedObjectIdsRef.current.size) {
-        erasedObjectIdsRef.current = nextIds;
-        setErasedObjectIds([...nextIds]);
+      const didAdvance = appendEraserPoint({ x: event.point.x, y: event.point.y });
+      if (didAdvance) {
+        const replacements = buildEraserPreviewReplacements();
+        eraserPreviewReplacementsRef.current = replacements;
+        setEraserPreviewReplacements(replacements);
       }
-
       return true;
     }
 
@@ -202,15 +244,16 @@ export const createDrawingHandlers = ({
 
   const handleMouseUp = () => {
     if (isErasingRef.current && currentToolRef.current === 'eraser') {
-      const erasedIds = [...erasedObjectIdsRef.current];
       isErasingRef.current = false;
+      const replacements = eraserPreviewReplacementsRef.current;
 
-      if (erasedIds.length > 0) {
-        deleteObjectsByIds(erasedIds);
+      if (replacements.length > 0) {
+        replaceObjectsById(replacements);
       }
 
-      erasedObjectIdsRef.current = new Set();
-      setErasedObjectIds([]);
+      eraserScreenPoints = [];
+      eraserPreviewReplacementsRef.current = [];
+      setEraserPreviewReplacements([]);
       if (!map.dragPan.isEnabled()) {
         map.dragPan.enable();
       }

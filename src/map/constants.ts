@@ -36,6 +36,8 @@ export const OBJECT_INTERACTIVE_LAYER_IDS = [
 ] as const;
 
 export const FREE_DRAW_POINT_THRESHOLD = 4;
+export const ERASER_POINT_THRESHOLD = 4;
+export const ERASER_RADIUS_PX = 10;
 
 export const EMPTY_GEOJSON: FeatureCollection<Geometry> = {
   type: 'FeatureCollection',

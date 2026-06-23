@@ -2,7 +2,7 @@ import type { Geometry, Position } from 'geojson';
 import type { Dispatch, SetStateAction } from 'react';
 import type maplibregl from 'maplibre-gl';
 
-import type { MapcraftObject, ToolId } from '../types/project';
+import type { MapcraftLayer, MapcraftObject, ToolId } from '../types/project';
 import type { ScreenPoint } from './types';
 
 export interface WritableRef<T> {
@@ -12,12 +12,13 @@ export interface WritableRef<T> {
 export interface MapInteractionBindings {
   map: maplibregl.Map;
   currentToolRef: WritableRef<ToolId>;
+  projectLayersRef: WritableRef<MapcraftLayer[]>;
   selectedLayerIdRef: WritableRef<string | null>;
   selectedObjectRef: WritableRef<MapcraftObject | null>;
   selectObjectRef: WritableRef<(objectId: string | null, layerId?: string | null) => void>;
   updateSelectedObjectGeometryRef: WritableRef<(geometry: Geometry) => void>;
   addObjectToSelectedLayer: (object: MapcraftObject) => void;
-  deleteObjectsByIds: (objectIds: string[]) => void;
+  replaceObjectsById: (replacements: Array<{ objectId: string; objects: MapcraftObject[] }>) => void;
   draftCoordinatesRef: WritableRef<Position[]>;
   closeToStartRef: WritableRef<boolean>;
   hoverVertexIndexRef: WritableRef<number | null>;
@@ -32,7 +33,7 @@ export interface MapInteractionBindings {
   freeDrawScreenPointsRef: WritableRef<ScreenPoint[]>;
   isFreeDrawingRef: WritableRef<boolean>;
   isErasingRef: WritableRef<boolean>;
-  erasedObjectIdsRef: WritableRef<Set<string>>;
+  eraserPreviewReplacementsRef: WritableRef<Array<{ objectId: string; objects: MapcraftObject[] }>>;
   setDraftCoordinates: Dispatch<SetStateAction<Position[]>>;
   setHoverCoordinate: Dispatch<SetStateAction<Position | null>>;
   setHoverVertexIndex: Dispatch<SetStateAction<number | null>>;
@@ -43,7 +44,9 @@ export interface MapInteractionBindings {
   setPreviewObjectGeometry: Dispatch<SetStateAction<Geometry | null>>;
   setFreeDrawScreenPoints: Dispatch<SetStateAction<ScreenPoint[]>>;
   setIsFreeDrawing: Dispatch<SetStateAction<boolean>>;
-  setErasedObjectIds: Dispatch<SetStateAction<string[]>>;
+  setEraserPreviewReplacements: Dispatch<
+    SetStateAction<Array<{ objectId: string; objects: MapcraftObject[] }>>
+  >;
   updateCanvasCursor: () => void;
   resetVertexEditing: () => void;
   resetFreeDraw: () => void;

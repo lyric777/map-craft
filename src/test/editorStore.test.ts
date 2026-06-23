@@ -159,4 +159,31 @@ describe('editor store', () => {
     expect(useEditorStore.getState().project.layers[0]?.objects).toHaveLength(0);
     expect(useEditorStore.getState().selectedObjectId).toBeNull();
   });
+
+  it('replaces one free draw object with multiple segments in one operation', () => {
+    const store = useEditorStore.getState();
+    const freeDraw = createFreeDrawObject([
+      [0, 0],
+      [1, 0],
+      [2, 0],
+      [3, 0],
+    ]);
+    store.addObjectToSelectedLayer(freeDraw);
+
+    const left = createFreeDrawObject([
+      [0, 0],
+      [1, 0],
+    ]);
+    const right = createFreeDrawObject([
+      [2, 0],
+      [3, 0],
+    ]);
+
+    store.replaceObjectsById([{ objectId: freeDraw.id, objects: [left, right] }]);
+
+    const objects = useEditorStore.getState().project.layers[0]?.objects ?? [];
+    expect(objects).toHaveLength(2);
+    expect(objects.map((object) => object.id)).toEqual([left.id, right.id]);
+    expect(useEditorStore.getState().selectedObjectId).toBeNull();
+  });
 });

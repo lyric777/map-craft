@@ -15,6 +15,11 @@ import type {
   MapObjectType,
 } from '../types/project';
 
+interface ScreenPointLike {
+  x: number;
+  y: number;
+}
+
 const EMPTY_FEATURE_COLLECTION: FeatureCollection<Geometry> = {
   type: 'FeatureCollection',
   features: [],
@@ -188,6 +193,207 @@ export const processFreeDrawCoordinates = (coordinates: Position[]) => {
   return simplified.length >= 2 ? simplified : smoothed.slice(0, 2);
 };
 
+export const getSourceObjectId = (object: MapcraftObject) =>
+  typeof object.meta.sourceObjectId === 'string' ? object.meta.sourceObjectId : object.id;
+
+const getScreenPointToSegmentDistance = (
+  point: ScreenPointLike,
+  start: ScreenPointLike,
+  end: ScreenPointLike,
+) => {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+
+  if (dx === 0 && dy === 0) {
+    return Math.hypot(point.x - start.x, point.y - start.y);
+  }
+
+  const projection = ((point.x - start.x) * dx + (point.y - start.y) * dy) / (dx * dx + dy * dy);
+  const t = Math.max(0, Math.min(1, projection));
+  const nearestX = start.x + dx * t;
+  const nearestY = start.y + dy * t;
+  return Math.hypot(point.x - nearestX, point.y - nearestY);
+};
+
+const getOrientation = (a: ScreenPointLike, b: ScreenPointLike, c: ScreenPointLike) => {
+  const value = (b.y - a.y) * (c.x - b.x) - (b.x - a.x) * (c.y - b.y);
+  if (Math.abs(value) < 0.000001) {
+    return 0;
+  }
+
+  return value > 0 ? 1 : 2;
+};
+
+const isPointOnSegment = (a: ScreenPointLike, b: ScreenPointLike, point: ScreenPointLike) =>
+  point.x <= Math.max(a.x, b.x) &&
+  point.x >= Math.min(a.x, b.x) &&
+  point.y <= Math.max(a.y, b.y) &&
+  point.y >= Math.min(a.y, b.y);
+
+const segmentsIntersect = (
+  segmentAStart: ScreenPointLike,
+  segmentAEnd: ScreenPointLike,
+  segmentBStart: ScreenPointLike,
+  segmentBEnd: ScreenPointLike,
+) => {
+  const orientation1 = getOrientation(segmentAStart, segmentAEnd, segmentBStart);
+  const orientation2 = getOrientation(segmentAStart, segmentAEnd, segmentBEnd);
+  const orientation3 = getOrientation(segmentBStart, segmentBEnd, segmentAStart);
+  const orientation4 = getOrientation(segmentBStart, segmentBEnd, segmentAEnd);
+
+  if (orientation1 !== orientation2 && orientation3 !== orientation4) {
+    return true;
+  }
+
+  if (orientation1 === 0 && isPointOnSegment(segmentAStart, segmentAEnd, segmentBStart)) {
+    return true;
+  }
+
+  if (orientation2 === 0 && isPointOnSegment(segmentAStart, segmentAEnd, segmentBEnd)) {
+    return true;
+  }
+
+  if (orientation3 === 0 && isPointOnSegment(segmentBStart, segmentBEnd, segmentAStart)) {
+    return true;
+  }
+
+  if (orientation4 === 0 && isPointOnSegment(segmentBStart, segmentBEnd, segmentAEnd)) {
+    return true;
+  }
+
+  return false;
+};
+
+const getSegmentToSegmentDistance = (
+  segmentAStart: ScreenPointLike,
+  segmentAEnd: ScreenPointLike,
+  segmentBStart: ScreenPointLike,
+  segmentBEnd: ScreenPointLike,
+) => {
+  if (segmentsIntersect(segmentAStart, segmentAEnd, segmentBStart, segmentBEnd)) {
+    return 0;
+  }
+
+  return Math.min(
+    getScreenPointToSegmentDistance(segmentAStart, segmentBStart, segmentBEnd),
+    getScreenPointToSegmentDistance(segmentAEnd, segmentBStart, segmentBEnd),
+    getScreenPointToSegmentDistance(segmentBStart, segmentAStart, segmentAEnd),
+    getScreenPointToSegmentDistance(segmentBEnd, segmentAStart, segmentAEnd),
+  );
+};
+
+const segmentTouchesEraserPath = (
+  segmentStart: ScreenPointLike,
+  segmentEnd: ScreenPointLike,
+  eraserPath: ScreenPointLike[],
+  eraseRadiusPx: number,
+) => {
+  if (eraserPath.length === 1) {
+    return getScreenPointToSegmentDistance(eraserPath[0]!, segmentStart, segmentEnd) <= eraseRadiusPx;
+  }
+
+  if (eraserPath.length >= 2) {
+    return (
+      getSegmentToSegmentDistance(
+        segmentStart,
+        segmentEnd,
+        eraserPath[0]!,
+        eraserPath[eraserPath.length - 1]!,
+      ) <= eraseRadiusPx
+    );
+  }
+
+  return false;
+};
+
+export const eraseLineStringCoordinates = (
+  coordinates: Position[],
+  projectedCoordinates: ScreenPointLike[],
+  eraserPath: ScreenPointLike[],
+  eraseRadiusPx: number,
+) => {
+  if (coordinates.length < 2 || projectedCoordinates.length !== coordinates.length || eraserPath.length === 0) {
+    return {
+      didErase: false,
+      segments: [cloneCoordinates(coordinates)],
+    };
+  }
+
+  const keptSegments: Position[][] = [];
+  let currentSegment: Position[] = [];
+  let didErase = false;
+
+  for (let index = 0; index < coordinates.length - 1; index += 1) {
+    const coordinateStart = coordinates[index]!;
+    const coordinateEnd = coordinates[index + 1]!;
+    const projectedStart = projectedCoordinates[index]!;
+    const projectedEnd = projectedCoordinates[index + 1]!;
+    const shouldErase = segmentTouchesEraserPath(projectedStart, projectedEnd, eraserPath, eraseRadiusPx);
+
+    if (shouldErase) {
+      didErase = true;
+      if (currentSegment.length >= 2) {
+        keptSegments.push(currentSegment);
+      }
+      currentSegment = [];
+      continue;
+    }
+
+    if (currentSegment.length === 0) {
+      currentSegment.push(cloneCoordinate(coordinateStart));
+    }
+
+    currentSegment.push(cloneCoordinate(coordinateEnd));
+  }
+
+  if (currentSegment.length >= 2) {
+    keptSegments.push(currentSegment);
+  }
+
+  return {
+    didErase,
+    segments: keptSegments,
+  };
+};
+
+export const eraseFreeDrawObject = (
+  object: MapcraftObject,
+  projectCoordinate: (coordinate: Position) => ScreenPointLike,
+  eraserPath: ScreenPointLike[],
+  eraseRadiusPx: number,
+) => {
+  if (!isFreeDrawObject(object) || !isLineGeometry(object.geometry)) {
+    return null;
+  }
+
+  const coordinates = object.geometry.coordinates;
+  const projectedCoordinates = coordinates.map(projectCoordinate);
+  const { didErase, segments } = eraseLineStringCoordinates(
+    coordinates,
+    projectedCoordinates,
+    eraserPath,
+    eraseRadiusPx,
+  );
+
+  if (!didErase) {
+    return null;
+  }
+
+  const sourceObjectId = getSourceObjectId(object);
+  return segments.map((segment) => ({
+    ...structuredClone(object),
+    id: createId(),
+    meta: {
+      ...structuredClone(object.meta),
+      sourceObjectId,
+    },
+    geometry: {
+      type: 'LineString' as const,
+      coordinates: segment,
+    },
+  }));
+};
+
 export const isFreeDrawObject = (object: MapcraftObject | null) => {
   if (!object) {
     return false;
@@ -311,6 +517,7 @@ export const projectToFeatureCollection = (
         geometry: geometryOverrides[object.id] ?? object.geometry,
         properties: {
           objectId: object.id,
+          sourceObjectId: getSourceObjectId(object),
           layerId: layer.id,
           objectType: object.type,
           isFreeDraw: object.meta.drawingMode === 'freeDraw',
