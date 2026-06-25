@@ -1,4 +1,5 @@
 import type { ToolId } from '../types/project';
+import type { GeometryEditMode } from './types';
 
 const buildCursorUrl = (svgMarkup: string, x: number, y: number, fallback: string) =>
   `url("data:image/svg+xml,${encodeURIComponent(svgMarkup)}") ${x} ${y}, ${fallback}`;
@@ -39,7 +40,9 @@ export const ERASER_CURSOR = buildCursorUrl(eraserSvg, 5, 18, 'cell');
 
 export interface CursorState {
   tool: ToolId;
+  geometryEditMode: GeometryEditMode | null;
   isMapDragging: boolean;
+  isSegmentHovering: boolean;
   isVertexHovering: boolean;
   isVertexDragging: boolean;
   isObjectHovering: boolean;
@@ -48,7 +51,9 @@ export interface CursorState {
 
 export const getCursorForState = ({
   tool,
+  geometryEditMode,
   isMapDragging,
+  isSegmentHovering,
   isVertexHovering,
   isVertexDragging,
   isObjectHovering,
@@ -56,6 +61,14 @@ export const getCursorForState = ({
 }: CursorState) => {
   if (isMapDragging || isVertexDragging || isObjectDragging) {
     return 'grabbing';
+  }
+
+  if (geometryEditMode === 'deleteVertex' && isVertexHovering) {
+    return 'not-allowed';
+  }
+
+  if (geometryEditMode === 'insertVertex' && isSegmentHovering) {
+    return 'copy';
   }
 
   if (isVertexHovering && tool === 'move') {

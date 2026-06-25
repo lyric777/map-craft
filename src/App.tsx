@@ -1,5 +1,5 @@
 import type maplibregl from 'maplibre-gl';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 
 import { InspectorPanel } from './app/InspectorPanel';
@@ -7,6 +7,7 @@ import { LayerPanel } from './app/LayerPanel';
 import { MapCanvas } from './map/MapCanvas';
 import { TopBar } from './app/TopBar';
 import { ToolBar } from './app/ToolBar';
+import type { GeometryEditMode } from './map/types';
 import { downloadBlob, downloadProjectFile, readProjectFile } from './project-io/file';
 import { useEditorStore, selectActiveLayer, selectActiveObject } from './state/editorStore';
 import { TOOL_SHORTCUTS } from './tools/tools';
@@ -28,6 +29,7 @@ function App() {
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [status, setStatus] = useState('Polygon tool ready.');
   const [themeMode, setThemeMode] = useState<ThemeMode>(getInitialTheme);
+  const [geometryEditMode, setGeometryEditMode] = useState<GeometryEditMode | null>(null);
   const state = useEditorStore(
     useShallow((store) => ({
       project: store.project,
@@ -60,6 +62,21 @@ function App() {
     () => selectActiveObject(state.project.layers, state.selectedLayerId, state.selectedObjectId),
     [state.project.layers, state.selectedLayerId, state.selectedObjectId],
   );
+
+  const handleGeometryEditModeChange = useCallback((mode: GeometryEditMode | null) => {
+    setGeometryEditMode(mode);
+  }, []);
+
+  useEffect(() => {
+    if (
+      !activeObject ||
+      state.currentTool !== 'move' ||
+      activeObject.type === 'point' ||
+      activeObject.meta.drawingMode === 'freeDraw'
+    ) {
+      setGeometryEditMode(null);
+    }
+  }, [activeObject, state.currentTool]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = themeMode;
@@ -201,9 +218,11 @@ function App() {
         />
         <main className="grid min-h-0 grid-rows-[minmax(0,1fr)_220px] gap-4 p-4">
           <MapCanvas
+            geometryEditMode={geometryEditMode}
             onMapReady={(map) => {
               mapRef.current = map;
             }}
+            onGeometryEditModeChange={handleGeometryEditModeChange}
           />
           <div className="grid min-h-0 grid-cols-[360px_minmax(0,1fr)] gap-4">
             <LayerPanel
@@ -243,6 +262,7 @@ function App() {
         </main>
         <div className="border-l border-border p-4">
           <InspectorPanel
+            geometryEditMode={geometryEditMode}
             object={activeObject}
             onDelete={() => {
               state.deleteSelectedObject();
@@ -251,6 +271,20 @@ function App() {
             onDuplicate={() => {
               state.duplicateSelectedObject();
               setStatus('Selection duplicated.');
+            }}
+            onGeometryEditModeChange={(mode) => {
+              handleGeometryEditModeChange(mode);
+              if (mode === 'insertVertex') {
+                setStatus('Click an edge to add a vertex.');
+                return;
+              }
+
+              if (mode === 'deleteVertex') {
+                setStatus('Click a vertex to remove it.');
+                return;
+              }
+
+              setStatus('Geometry edit mode cleared.');
             }}
             onStyleChange={(style) => {
               state.updateSelectedObjectStyle(style);

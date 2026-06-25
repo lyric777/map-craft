@@ -27,17 +27,27 @@ import {
 import { bindMapInteractions } from './interactions';
 import { registerEditorLayers } from './layers';
 import { selectActiveObject, useEditorStore } from '../state/editorStore';
-import type { ScreenPoint } from './types';
+import type { GeometryEditMode, ScreenPoint } from './types';
 
 interface MapCanvasProps {
+  geometryEditMode: GeometryEditMode | null;
   onMapReady: (map: maplibregl.Map) => void;
+  onGeometryEditModeChange: (mode: GeometryEditMode | null) => void;
 }
 
-export function MapCanvas({ onMapReady }: MapCanvasProps) {
+const instructionClassName =
+  'pointer-events-none absolute left-3 top-3 rounded-md border border-white/10 bg-slate-950/60 px-3 py-2 text-xs text-white shadow-[0_4px_10px_rgba(15,23,42,0.18)]';
+
+export function MapCanvas({
+  geometryEditMode,
+  onMapReady,
+  onGeometryEditModeChange,
+}: MapCanvasProps) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [draftCoordinates, setDraftCoordinates] = useState<Position[]>([]);
   const [hoverCoordinate, setHoverCoordinate] = useState<Position | null>(null);
+  const [hoverSegmentIndex, setHoverSegmentIndex] = useState<number | null>(null);
   const [hoverVertexIndex, setHoverVertexIndex] = useState<number | null>(null);
   const [dragVertexIndex, setDragVertexIndex] = useState<number | null>(null);
   const [previewVertices, setPreviewVertices] = useState<Position[] | null>(null);
@@ -194,7 +204,9 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
   );
 
   const currentToolRef = useRef(currentTool);
+  const geometryEditModeRef = useRef<GeometryEditMode | null>(geometryEditMode);
   const onMapReadyRef = useRef(onMapReady);
+  const onGeometryEditModeChangeRef = useRef(onGeometryEditModeChange);
   const projectLayersRef = useRef(project.layers);
   const selectObjectRef = useRef(selectObject);
   const setViewportRef = useRef(setViewport);
@@ -206,6 +218,7 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
   const draftCoordinatesRef = useRef<Position[]>(draftCoordinates);
   const selectedLayerIdRef = useRef(selectedLayerId);
   const selectedObjectRef = useRef(selectedObject);
+  const hoverSegmentIndexRef = useRef<number | null>(hoverSegmentIndex);
   const hoverVertexIndexRef = useRef<number | null>(hoverVertexIndex);
   const dragVertexIndexRef = useRef<number | null>(dragVertexIndex);
   const previewVerticesRef = useRef<Position[] | null>(previewVertices);
@@ -224,7 +237,9 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
 
   useEffect(() => {
     currentToolRef.current = currentTool;
+    geometryEditModeRef.current = geometryEditMode;
     onMapReadyRef.current = onMapReady;
+    onGeometryEditModeChangeRef.current = onGeometryEditModeChange;
     projectLayersRef.current = project.layers;
     selectObjectRef.current = selectObject;
     setViewportRef.current = setViewport;
@@ -235,6 +250,7 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
     draftCoordinatesRef.current = draftCoordinates;
     selectedLayerIdRef.current = selectedLayerId;
     selectedObjectRef.current = selectedObject;
+    hoverSegmentIndexRef.current = hoverSegmentIndex;
     hoverVertexIndexRef.current = hoverVertexIndex;
     dragVertexIndexRef.current = dragVertexIndex;
     previewVerticesRef.current = previewVertices;
@@ -254,9 +270,12 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
     dragVertexIndex,
     eraserPreviewReplacements,
     editGeoJson,
+    geometryEditMode,
     hoverObjectId,
+    hoverSegmentIndex,
     hoverVertexIndex,
     isFreeDrawing,
+    onGeometryEditModeChange,
     onMapReady,
     project.layers,
     objectsGeoJson,
@@ -290,7 +309,9 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
     const updateCanvasCursor = () => {
       map.getCanvasContainer().style.cursor = getCursorForState({
         tool: currentToolRef.current,
+        geometryEditMode: geometryEditModeRef.current,
         isMapDragging: mapDraggingRef.current,
+        isSegmentHovering: hoverSegmentIndexRef.current !== null,
         isVertexHovering: hoverVertexIndexRef.current !== null,
         isVertexDragging: dragVertexIndexRef.current !== null,
         isObjectHovering: hoverObjectIdRef.current !== null,
@@ -299,6 +320,7 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
     };
 
     const resetVertexEditing = () => {
+      hoverSegmentIndexRef.current = null;
       dragVertexIndexRef.current = null;
       hoverVertexIndexRef.current = null;
       previewVerticesRef.current = null;
@@ -308,6 +330,7 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       objectDragStartRef.current = null;
       objectDragGeometryRef.current = null;
       dragMovedRef.current = false;
+      setHoverSegmentIndex(null);
       setDragVertexIndex(null);
       setHoverVertexIndex(null);
       setPreviewVertices(null);
@@ -377,12 +400,14 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       projectLayersRef,
       selectedLayerIdRef,
       selectedObjectRef,
+      geometryEditModeRef,
       selectObjectRef,
       updateSelectedObjectGeometryRef,
       addObjectToSelectedLayer,
       replaceObjectsById,
       draftCoordinatesRef,
       closeToStartRef,
+      hoverSegmentIndexRef,
       hoverVertexIndexRef,
       dragVertexIndexRef,
       previewVerticesRef,
@@ -398,19 +423,21 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       eraserPreviewReplacementsRef,
       setDraftCoordinates,
       setHoverCoordinate,
+      setHoverSegmentIndex,
       setHoverVertexIndex,
       setDragVertexIndex,
       setPreviewVertices,
       setHoverObjectId,
       setDragObjectId,
       setPreviewObjectGeometry,
-      setFreeDrawScreenPoints,
-      setIsFreeDrawing,
-      setEraserPreviewReplacements,
-      updateCanvasCursor,
-      resetVertexEditing,
-      resetFreeDraw,
-    });
+	      setFreeDrawScreenPoints,
+	      setIsFreeDrawing,
+	      setEraserPreviewReplacements,
+	      setGeometryEditMode: (mode) => onGeometryEditModeChangeRef.current(mode),
+	      updateCanvasCursor,
+	      resetVertexEditing,
+	      resetFreeDraw,
+	    });
 
     onMapReadyRef.current(map);
     mapRef.current = map;
@@ -468,7 +495,9 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
 
     map.getCanvasContainer().style.cursor = getCursorForState({
       tool: currentTool,
+      geometryEditMode,
       isMapDragging: mapDraggingRef.current,
+      isSegmentHovering: hoverSegmentIndex !== null,
       isVertexHovering: hoverVertexIndex !== null,
       isVertexDragging: dragVertexIndex !== null,
       isObjectHovering: hoverObjectId !== null,
@@ -485,6 +514,7 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
     }
 
     if (currentTool !== 'move') {
+      hoverSegmentIndexRef.current = null;
       hoverVertexIndexRef.current = null;
       dragVertexIndexRef.current = null;
       previewVerticesRef.current = null;
@@ -493,6 +523,7 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       previewObjectGeometryRef.current = null;
       objectDragStartRef.current = null;
       objectDragGeometryRef.current = null;
+      setHoverSegmentIndex(null);
       setHoverVertexIndex(null);
       setDragVertexIndex(null);
       setPreviewVertices(null);
@@ -522,7 +553,15 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
         map.dragPan.enable();
       }
     }
-  }, [currentTool, dragObjectId, dragVertexIndex, hoverObjectId, hoverVertexIndex]);
+  }, [
+    currentTool,
+    dragObjectId,
+    dragVertexIndex,
+    geometryEditMode,
+    hoverObjectId,
+    hoverSegmentIndex,
+    hoverVertexIndex,
+  ]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -531,6 +570,7 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
     }
 
     if (currentTool !== 'move') {
+      hoverSegmentIndexRef.current = null;
       hoverVertexIndexRef.current = null;
       dragVertexIndexRef.current = null;
       previewVerticesRef.current = null;
@@ -539,6 +579,7 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       previewObjectGeometryRef.current = null;
       objectDragStartRef.current = null;
       objectDragGeometryRef.current = null;
+      setHoverSegmentIndex(null);
       setHoverVertexIndex(null);
       setDragVertexIndex(null);
       setPreviewVertices(null);
@@ -548,8 +589,9 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
       if (!map.dragPan.isEnabled()) {
         map.dragPan.enable();
       }
+      onGeometryEditModeChange(null);
     }
-  }, [currentTool, selectedObject?.id, selectedObject?.type]);
+  }, [currentTool, onGeometryEditModeChange, selectedObject?.id, selectedObject?.type]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -575,23 +617,29 @@ export function MapCanvas({ onMapReady }: MapCanvasProps) {
         ref={mapContainerRef}
         className="h-full w-full"
       />
+      {currentTool === 'move' && geometryEditMode === 'insertVertex' && (
+        <div className={instructionClassName}>Click an edge to add a vertex.</div>
+      )}
+      {currentTool === 'move' && geometryEditMode === 'deleteVertex' && (
+        <div className={instructionClassName}>Click a vertex to remove it.</div>
+      )}
       {currentTool === 'polygon' && (
-        <div className="pointer-events-none absolute left-3 top-3 rounded-md border border-white/10 bg-slate-950/60 px-3 py-2 text-xs text-white shadow-[0_4px_10px_rgba(15,23,42,0.18)]">
+        <div className={instructionClassName}>
           Click to add vertices. Double-click or click the first point to finish.
         </div>
       )}
       {currentTool === 'line' && (
-        <div className="pointer-events-none absolute left-3 top-3 rounded-md border border-white/10 bg-slate-950/60 px-3 py-2 text-xs text-white shadow-[0_4px_10px_rgba(15,23,42,0.18)]">
+        <div className={instructionClassName}>
           Click to add points. Double-click to finish the line.
         </div>
       )}
       {currentTool === 'freeDraw' && (
-        <div className="pointer-events-none absolute left-3 top-3 rounded-md border border-white/10 bg-slate-950/60 px-3 py-2 text-xs text-white shadow-[0_4px_10px_rgba(15,23,42,0.18)]">
+        <div className={instructionClassName}>
           Drag to sketch a freehand line.
         </div>
       )}
       {currentTool === 'eraser' && (
-        <div className="pointer-events-none absolute left-3 top-3 rounded-md border border-white/10 bg-slate-950/60 px-3 py-2 text-xs text-white shadow-[0_4px_10px_rgba(15,23,42,0.18)]">
+        <div className={instructionClassName}>
           Drag across free draw strokes to erase them.
         </div>
       )}

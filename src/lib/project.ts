@@ -20,6 +20,20 @@ interface ScreenPointLike {
   y: number;
 }
 
+export interface SegmentHit {
+  segmentIndex: number;
+  distance: number;
+}
+
+export type GeometryEditResult =
+  | {
+      kind: 'update';
+      geometry: Geometry;
+    }
+  | {
+      kind: 'delete';
+    };
+
 const ERASER_TRIM_SAMPLES = 24;
 const ERASER_TRIM_BINARY_STEPS = 12;
 const ERASER_TRIM_EPSILON = 0.000001;
@@ -582,6 +596,83 @@ export const getEditableVertices = (object: MapcraftObject | null): Position[] |
   }
 
   return null;
+};
+
+export const findNearestSegment = (
+  vertices: Position[],
+  targetPoint: ScreenPointLike,
+  projectCoordinate: (coordinate: Position) => ScreenPointLike,
+  closed: boolean,
+): SegmentHit | null => {
+  const segmentCount = closed ? vertices.length : vertices.length - 1;
+  if (segmentCount <= 0) {
+    return null;
+  }
+
+  let closest: SegmentHit | null = null;
+
+  for (let index = 0; index < segmentCount; index += 1) {
+    const start = projectCoordinate(vertices[index]!);
+    const end = projectCoordinate(vertices[(index + 1) % vertices.length]!);
+    const distance = getScreenPointToSegmentDistance(targetPoint, start, end);
+
+    if (!closest || distance < closest.distance) {
+      closest = {
+        segmentIndex: index,
+        distance,
+      };
+    }
+  }
+
+  return closest;
+};
+
+export const insertVertexIntoObject = (
+  object: MapcraftObject | null,
+  segmentIndex: number,
+  coordinate: Position,
+): Geometry | null => {
+  const vertices = getEditableVertices(object);
+  if (!object || !vertices || object.type === 'point' || isFreeDrawObject(object)) {
+    return null;
+  }
+
+  const maxSegmentIndex = object.type === 'polygon' ? vertices.length - 1 : vertices.length - 2;
+  if (segmentIndex < 0 || segmentIndex > maxSegmentIndex) {
+    return null;
+  }
+
+  const nextVertices = cloneCoordinates(vertices);
+  nextVertices.splice(segmentIndex + 1, 0, cloneCoordinate(coordinate));
+  return buildGeometryFromVertices(object.type, nextVertices);
+};
+
+export const deleteVertexFromObject = (
+  object: MapcraftObject | null,
+  vertexIndex: number,
+): GeometryEditResult | null => {
+  const vertices = getEditableVertices(object);
+  if (!object || !vertices || object.type === 'point' || isFreeDrawObject(object)) {
+    return null;
+  }
+
+  if (vertexIndex < 0 || vertexIndex >= vertices.length) {
+    return null;
+  }
+
+  const nextVertices = vertices.filter((_, index) => index !== vertexIndex);
+  const nextGeometry = buildGeometryFromVertices(object.type, nextVertices);
+
+  if (!nextGeometry) {
+    return {
+      kind: 'delete',
+    };
+  }
+
+  return {
+    kind: 'update',
+    geometry: nextGeometry,
+  };
 };
 
 export const buildGeometryFromVertices = (

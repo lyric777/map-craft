@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  deleteVertexFromObject,
   eraseFreeDrawObject,
   eraseLineStringCoordinates,
   createDefaultLayer,
   createFreeDrawObject,
   createLineObject,
+  createPolygonObject,
+  findNearestSegment,
   getEditableVertices,
+  insertVertexIntoObject,
   processFreeDrawCoordinates,
   projectToFeatureCollection,
   simplifyFreeDrawCoordinates,
@@ -87,6 +91,107 @@ describe('project helpers', () => {
     ]);
 
     expect(getEditableVertices(object)).toEqual([]);
+  });
+
+  it('finds the nearest segment and inserts a vertex into line and polygon geometry', () => {
+    const line = createLineObject([
+      [0, 0],
+      [10, 0],
+    ]);
+    const polygon = createPolygonObject([
+      [0, 0],
+      [10, 0],
+      [10, 10],
+      [0, 0],
+    ]);
+
+    const lineHit = findNearestSegment(
+      getEditableVertices(line)!,
+      { x: 6, y: 2 },
+      ([x, y]) => ({ x, y }),
+      false,
+    );
+    const polygonHit = findNearestSegment(
+      getEditableVertices(polygon)!,
+      { x: 5, y: 1 },
+      ([x, y]) => ({ x, y }),
+      true,
+    );
+
+    expect(lineHit).toMatchObject({ segmentIndex: 0 });
+    expect(polygonHit).toMatchObject({ segmentIndex: 0 });
+    expect(insertVertexIntoObject(line, 0, [6, 0])).toEqual({
+      type: 'LineString',
+      coordinates: [
+        [0, 0],
+        [6, 0],
+        [10, 0],
+      ],
+    });
+    expect(insertVertexIntoObject(polygon, 0, [5, 0])).toEqual({
+      type: 'Polygon',
+      coordinates: [
+        [
+          [0, 0],
+          [5, 0],
+          [10, 0],
+          [10, 10],
+          [0, 0],
+        ],
+      ],
+    });
+  });
+
+  it('deletes a vertex or the whole object when geometry falls below minimum size', () => {
+    const line = createLineObject([
+      [0, 0],
+      [5, 0],
+      [10, 0],
+    ]);
+    const polygon = createPolygonObject([
+      [0, 0],
+      [10, 0],
+      [10, 10],
+      [0, 10],
+      [0, 0],
+    ]);
+    const minimalLine = createLineObject([
+      [0, 0],
+      [5, 0],
+    ]);
+    const minimalPolygon = createPolygonObject([
+      [0, 0],
+      [10, 0],
+      [5, 5],
+      [0, 0],
+    ]);
+
+    expect(deleteVertexFromObject(line, 1)).toEqual({
+      kind: 'update',
+      geometry: {
+        type: 'LineString',
+        coordinates: [
+          [0, 0],
+          [10, 0],
+        ],
+      },
+    });
+    expect(deleteVertexFromObject(polygon, 1)).toEqual({
+      kind: 'update',
+      geometry: {
+        type: 'Polygon',
+        coordinates: [
+          [
+            [0, 0],
+            [10, 10],
+            [0, 10],
+            [0, 0],
+          ],
+        ],
+      },
+    });
+    expect(deleteVertexFromObject(minimalLine, 0)).toEqual({ kind: 'delete' });
+    expect(deleteVertexFromObject(minimalPolygon, 1)).toEqual({ kind: 'delete' });
   });
 
   it('projects selection, hover, and free draw metadata into map features', () => {

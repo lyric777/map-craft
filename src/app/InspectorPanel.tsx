@@ -1,11 +1,14 @@
 import { Copy, Trash2 } from 'lucide-react';
 
 import { isFreeDrawObject } from '../lib/project';
+import type { GeometryEditMode } from '../map/types';
 import type { MapcraftObject } from '../types/project';
 
 interface InspectorPanelProps {
   object: MapcraftObject | null;
+  geometryEditMode: GeometryEditMode | null;
   onStyleChange: (style: Partial<MapcraftObject['style']>) => void;
+  onGeometryEditModeChange: (mode: GeometryEditMode | null) => void;
   onDelete: () => void;
   onDuplicate: () => void;
 }
@@ -14,10 +17,22 @@ const labelClassName = 'mb-1 block text-xs font-medium uppercase tracking-wide t
 
 export function InspectorPanel({
   object,
+  geometryEditMode,
   onStyleChange,
+  onGeometryEditModeChange,
   onDelete,
   onDuplicate,
 }: InspectorPanelProps) {
+  const showGeometryControls =
+    object && !isFreeDrawObject(object) && (object.type === 'line' || object.type === 'polygon');
+
+  const getModeButtonClassName = (mode: GeometryEditMode) =>
+    `rounded-md border px-3 py-2 text-sm transition-colors ${
+      geometryEditMode === mode
+        ? 'border-accent bg-accentSoft text-foreground'
+        : 'border-border bg-panelAlt text-foreground hover:border-accent'
+    }`;
+
   return (
     <aside className="flex h-full flex-col rounded-md border border-border bg-panel px-4 py-4">
       <div className="mb-4">
@@ -37,6 +52,45 @@ export function InspectorPanel({
             <div className="font-medium text-foreground">{isFreeDrawObject(object) ? 'free draw stroke' : object.type}</div>
             <div className="mt-1 break-all text-subtle">{object.id}</div>
           </div>
+
+          {showGeometryControls ? (
+            <div className="space-y-3 rounded-md border border-border bg-panelAlt px-3 py-3">
+              <div>
+                <div className="text-xs font-medium uppercase tracking-wide text-subtle">Geometry</div>
+                <div className="mt-1 text-xs text-muted">
+                  {geometryEditMode === 'insertVertex'
+                    ? 'Click an edge on the map to add one vertex.'
+                    : geometryEditMode === 'deleteVertex'
+                      ? 'Click a vertex on the map to remove it.'
+                      : 'Choose a one-shot edit mode for the selected shape.'}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  className={getModeButtonClassName('insertVertex')}
+                  onClick={() =>
+                    onGeometryEditModeChange(
+                      geometryEditMode === 'insertVertex' ? null : 'insertVertex',
+                    )
+                  }
+                  type="button"
+                >
+                  Insert Vertex
+                </button>
+                <button
+                  className={getModeButtonClassName('deleteVertex')}
+                  onClick={() =>
+                    onGeometryEditModeChange(
+                      geometryEditMode === 'deleteVertex' ? null : 'deleteVertex',
+                    )
+                  }
+                  type="button"
+                >
+                  Delete Vertex
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           <div className="grid grid-cols-2 gap-3">
             <label>

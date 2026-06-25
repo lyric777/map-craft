@@ -7,7 +7,9 @@ describe('map cursor state', () => {
     expect(
       getCursorForState({
         tool: 'polygon',
+        geometryEditMode: null,
         isMapDragging: false,
+        isSegmentHovering: false,
         isVertexHovering: false,
         isVertexDragging: false,
         isObjectHovering: false,
@@ -18,7 +20,9 @@ describe('map cursor state', () => {
     expect(
       getCursorForState({
         tool: 'freeDraw',
+        geometryEditMode: null,
         isMapDragging: false,
+        isSegmentHovering: false,
         isVertexHovering: false,
         isVertexDragging: false,
         isObjectHovering: false,
@@ -31,7 +35,9 @@ describe('map cursor state', () => {
     expect(
       getCursorForState({
         tool: 'eraser',
+        geometryEditMode: null,
         isMapDragging: false,
+        isSegmentHovering: false,
         isVertexHovering: false,
         isVertexDragging: false,
         isObjectHovering: false,
@@ -44,7 +50,9 @@ describe('map cursor state', () => {
     expect(
       getCursorForState({
         tool: 'move',
+        geometryEditMode: null,
         isMapDragging: false,
+        isSegmentHovering: false,
         isVertexHovering: true,
         isVertexDragging: false,
         isObjectHovering: false,
@@ -55,7 +63,9 @@ describe('map cursor state', () => {
     expect(
       getCursorForState({
         tool: 'move',
+        geometryEditMode: null,
         isMapDragging: false,
+        isSegmentHovering: false,
         isVertexHovering: false,
         isVertexDragging: false,
         isObjectHovering: true,
@@ -66,7 +76,9 @@ describe('map cursor state', () => {
     expect(
       getCursorForState({
         tool: 'move',
+        geometryEditMode: null,
         isMapDragging: false,
+        isSegmentHovering: false,
         isVertexHovering: false,
         isVertexDragging: false,
         isObjectHovering: false,
@@ -79,7 +91,9 @@ describe('map cursor state', () => {
     expect(
       getCursorForState({
         tool: 'move',
+        geometryEditMode: null,
         isMapDragging: false,
+        isSegmentHovering: false,
         isVertexHovering: false,
         isVertexDragging: false,
         isObjectHovering: false,

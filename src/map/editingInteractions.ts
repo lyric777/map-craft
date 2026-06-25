@@ -3,7 +3,11 @@ import type { MapGeoJSONFeature, MapLayerMouseEvent, MapMouseEvent } from 'mapli
 
 import {
   buildGeometryFromVertices,
+  deleteVertexFromObject,
+  findNearestSegment,
   getEditableVertices,
+  insertVertexIntoObject,
+  isFreeDrawObject,
   translateGeometry,
 } from '../lib/project';
 import { OBJECT_INTERACTIVE_LAYER_IDS } from './constants';
@@ -17,8 +21,11 @@ export const createEditingHandlers = ({
   currentToolRef,
   selectedLayerIdRef,
   selectedObjectRef,
+  geometryEditModeRef,
   selectObjectRef,
   updateSelectedObjectGeometryRef,
+  replaceObjectsById,
+  hoverSegmentIndexRef,
   hoverVertexIndexRef,
   dragVertexIndexRef,
   previewVerticesRef,
@@ -29,18 +36,74 @@ export const createEditingHandlers = ({
   objectDragGeometryRef,
   dragMovedRef,
   setHoverCoordinate,
+  setHoverSegmentIndex,
   setHoverVertexIndex,
   setDragVertexIndex,
   setPreviewVertices,
   setHoverObjectId,
   setDragObjectId,
   setPreviewObjectGeometry,
+  setGeometryEditMode,
   updateCanvasCursor,
   resetVertexEditing,
 }: MapInteractionBindings) => {
+  const clearHoveredSegment = () => {
+    if (hoverSegmentIndexRef.current === null) {
+      return;
+    }
+
+    hoverSegmentIndexRef.current = null;
+    setHoverSegmentIndex(null);
+  };
+
+  const exitGeometryEditMode = () => {
+    clearHoveredSegment();
+    geometryEditModeRef.current = null;
+    setGeometryEditMode(null);
+    updateCanvasCursor();
+  };
+
+  const getSelectedEditableShape = () => {
+    const object = selectedObjectRef.current;
+    if (!object || isFreeDrawObject(object)) {
+      return null;
+    }
+
+    return object.type === 'line' || object.type === 'polygon' ? object : null;
+  };
+
+  const getHoveredSegment = (event: MapMouseEvent) => {
+    const object = getSelectedEditableShape();
+    const vertices = getEditableVertices(object);
+    if (!object || !vertices || vertices.length < 2) {
+      return null;
+    }
+
+    const layers = object.type === 'polygon' ? ['polygon-line-hit'] : ['line-string-hit'];
+    const interactiveFeatures = map.queryRenderedFeatures(event.point, { layers });
+    const matchesSelectedObject = interactiveFeatures.some(
+      (feature) => String(feature.properties?.objectId) === object.id,
+    );
+
+    if (!matchesSelectedObject) {
+      return null;
+    }
+
+    return findNearestSegment(
+      vertices,
+      { x: event.point.x, y: event.point.y },
+      (coordinate) => {
+        const projected = map.project({ lng: coordinate[0], lat: coordinate[1] });
+        return { x: projected.x, y: projected.y };
+      },
+      object.type === 'polygon',
+    );
+  };
+
   const handleObjectMouseEnter = (event: MapLayerMouseEvent) => {
     if (
       currentToolRef.current !== 'move' ||
+      geometryEditModeRef.current !== null ||
       dragVertexIndexRef.current !== null ||
       dragObjectIdRef.current !== null
     ) {
@@ -70,6 +133,7 @@ export const createEditingHandlers = ({
   const handleObjectMouseDown = (event: MapLayerMouseEvent) => {
     if (
       currentToolRef.current !== 'move' ||
+      geometryEditModeRef.current !== null ||
       dragVertexIndexRef.current !== null ||
       hoverVertexIndexRef.current !== null
     ) {
@@ -131,8 +195,32 @@ export const createEditingHandlers = ({
 
     const feature = event.features?.[0];
     const nextIndex = Number(feature?.properties?.vertexIndex);
-    const baseVertices = getEditableVertices(selectedObjectRef.current);
-    if (Number.isNaN(nextIndex) || !baseVertices) {
+    const object = selectedObjectRef.current;
+    const baseVertices = getEditableVertices(object);
+    if (Number.isNaN(nextIndex) || !baseVertices || !object) {
+      return;
+    }
+
+    if (geometryEditModeRef.current === 'deleteVertex') {
+      event.preventDefault();
+      const result = deleteVertexFromObject(object, nextIndex);
+      resetVertexEditing();
+
+      if (!result) {
+        return;
+      }
+
+      if (result.kind === 'delete') {
+        replaceObjectsById([{ objectId: object.id, objects: [] }]);
+      } else {
+        updateSelectedObjectGeometryRef.current(result.geometry);
+      }
+
+      exitGeometryEditMode();
+      return;
+    }
+
+    if (geometryEditModeRef.current !== null) {
       return;
     }
 
@@ -157,6 +245,29 @@ export const createEditingHandlers = ({
       return false;
     }
 
+    if (geometryEditModeRef.current === 'insertVertex') {
+      const object = getSelectedEditableShape();
+      const hoveredSegment = object ? getHoveredSegment(event) : null;
+
+      if (object && hoveredSegment) {
+        const nextGeometry = insertVertexIntoObject(object, hoveredSegment.segmentIndex, [
+          event.lngLat.lng,
+          event.lngLat.lat,
+        ]);
+
+        if (nextGeometry) {
+          updateSelectedObjectGeometryRef.current(nextGeometry);
+          exitGeometryEditMode();
+        }
+      }
+
+      return true;
+    }
+
+    if (geometryEditModeRef.current === 'deleteVertex') {
+      return true;
+    }
+
     const interactiveFeatures = map.queryRenderedFeatures(event.point, {
       layers: [...OBJECT_INTERACTIVE_LAYER_IDS],
     });
@@ -175,6 +286,20 @@ export const createEditingHandlers = ({
   };
 
   const handleMouseMove = (event: MapMouseEvent) => {
+    if (currentToolRef.current === 'move' && geometryEditModeRef.current === 'insertVertex') {
+      const hoveredSegment = getHoveredSegment(event);
+      const nextIndex = hoveredSegment?.segmentIndex ?? null;
+
+      if (hoverSegmentIndexRef.current !== nextIndex) {
+        hoverSegmentIndexRef.current = nextIndex;
+        setHoverSegmentIndex(nextIndex);
+        updateCanvasCursor();
+      }
+    } else if (hoverSegmentIndexRef.current !== null) {
+      clearHoveredSegment();
+      updateCanvasCursor();
+    }
+
     const activeVertexIndex = dragVertexIndexRef.current;
     if (activeVertexIndex !== null) {
       const baseVertices = previewVerticesRef.current ?? getEditableVertices(selectedObjectRef.current);
@@ -242,6 +367,7 @@ export const createEditingHandlers = ({
   };
 
   const handleMouseOut = () => {
+    clearHoveredSegment();
     if (dragVertexIndexRef.current === null) {
       setHoverCoordinate(null);
     }
