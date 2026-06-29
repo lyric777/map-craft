@@ -1,4 +1,4 @@
-import { Download, FilePlus2, FolderOpen, Moon, Redo2, Save, Sun, Undo2 } from 'lucide-react';
+import { Copy, ClipboardPaste, Download, FilePlus2, FolderOpen, Moon, Redo2, Save, Sun, Undo2 } from 'lucide-react';
 
 type ThemeMode = 'dark' | 'light';
 
@@ -7,8 +7,12 @@ interface TopBarProps {
   onOpen: () => void;
   onSave: () => void;
   onExportPng: () => void;
+  onCopy: () => void;
+  onPaste: () => void;
   onUndo: () => void;
   onRedo: () => void;
+  canCopy: boolean;
+  canPaste: boolean;
   canUndo: boolean;
   canRedo: boolean;
   themeMode: ThemeMode;
@@ -23,8 +27,12 @@ export function TopBar({
   onOpen,
   onSave,
   onExportPng,
+  onCopy,
+  onPaste,
   onUndo,
   onRedo,
+  canCopy,
+  canPaste,
   canUndo,
   canRedo,
   themeMode,
@@ -60,6 +68,14 @@ export function TopBar({
         <button className={buttonClassName} onClick={onExportPng} type="button">
           <Download size={16} />
           Export PNG
+        </button>
+        <button className={buttonClassName} disabled={!canCopy} onClick={onCopy} type="button">
+          <Copy size={16} />
+          Copy
+        </button>
+        <button className={buttonClassName} disabled={!canPaste} onClick={onPaste} type="button">
+          <ClipboardPaste size={16} />
+          Paste
         </button>
         <button className={buttonClassName} disabled={!canUndo} onClick={onUndo} type="button">
           <Undo2 size={16} />

@@ -31,6 +31,7 @@ import type { GeometryEditMode, ScreenPoint } from './types';
 
 interface MapCanvasProps {
   geometryEditMode: GeometryEditMode | null;
+  mapToastMessage?: string | null;
   onMapReady: (map: maplibregl.Map) => void;
   onGeometryEditModeChange: (mode: GeometryEditMode | null) => void;
 }
@@ -40,6 +41,7 @@ const instructionClassName =
 
 export function MapCanvas({
   geometryEditMode,
+  mapToastMessage = null,
   onMapReady,
   onGeometryEditModeChange,
 }: MapCanvasProps) {
@@ -641,6 +643,11 @@ export function MapCanvas({
       {currentTool === 'eraser' && (
         <div className={instructionClassName}>
           Drag across free draw strokes to erase them.
+        </div>
+      )}
+      {mapToastMessage && (
+        <div className="pointer-events-none absolute bottom-3 left-3 rounded-md border border-white/10 bg-slate-950/60 px-3 py-2 text-xs text-white shadow-[0_4px_10px_rgba(15,23,42,0.18)]">
+          {mapToastMessage}
         </div>
       )}
     </div>

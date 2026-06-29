@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import App from '../App';
+import { useEditorStore } from '../state/editorStore';
 
 vi.mock('../map/MapCanvas', () => ({
   MapCanvas: ({ onMapReady }: { onMapReady: (map: unknown) => void }) => {
@@ -15,6 +16,10 @@ vi.mock('../map/MapCanvas', () => ({
 }));
 
 describe('App', () => {
+  beforeEach(() => {
+    useEditorStore.getState().newProject();
+  });
+
   it('renders the editor shell', () => {
     render(<App />);
 
@@ -32,6 +37,37 @@ describe('App', () => {
     await waitFor(() => {
       expect(document.documentElement.dataset.theme).toBe('light');
       expect(screen.getByTestId('app-shell')).toHaveAttribute('data-theme', 'light');
+    });
+  });
+
+  it('does not let modifier shortcuts get swallowed by tool hotkeys', async () => {
+    const store = useEditorStore.getState();
+    store.addObjectToSelectedLayer({
+      id: 'point-1',
+      type: 'point',
+      geometry: {
+        type: 'Point',
+        coordinates: [10, 20],
+      },
+      style: {
+        fillColor: '#45c4ff',
+        strokeColor: '#ffffff',
+        strokeWidth: 2,
+        opacity: 0.45,
+      },
+      meta: {},
+    });
+
+    render(<App />);
+
+    fireEvent.keyDown(window, { key: 'c', metaKey: true });
+    fireEvent.keyDown(window, { key: 'v', metaKey: true });
+
+    await waitFor(() => {
+      expect(useEditorStore.getState().project.layers[0]?.objects).toHaveLength(2);
+      expect(useEditorStore.getState().clipboardObject?.id).toBe('point-1');
+      expect(useEditorStore.getState().currentTool).toBe('move');
+      expect(screen.getByText('Clipboard pasted into the active layer.')).toBeInTheDocument();
     });
   });
 });

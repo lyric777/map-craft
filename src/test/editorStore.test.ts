@@ -217,4 +217,54 @@ describe('editor store', () => {
     expect(objects[0]?.id).toBe(remainingSegment.id);
     expect(objects[0]?.meta.sourceObjectId).toBe('root-free-draw');
   });
+
+  it('copies a selected object and pastes it into the current layer', () => {
+    const store = useEditorStore.getState();
+    const originalLayerId = store.selectedLayerId!;
+    const originalPoint = createPointObject([12, 34]);
+    store.addObjectToSelectedLayer(originalPoint);
+    store.copySelectedObject();
+
+    store.addLayer();
+    const targetLayerId = useEditorStore.getState().selectedLayerId!;
+    useEditorStore.getState().pasteClipboardToSelectedLayer();
+
+    const layers = useEditorStore.getState().project.layers;
+    const originalLayer = layers.find((layer) => layer.id === originalLayerId)!;
+    const targetLayer = layers.find((layer) => layer.id === targetLayerId)!;
+    const pastedPoint = targetLayer.objects[0];
+
+    expect(useEditorStore.getState().clipboardObject?.id).toBe(originalPoint.id);
+    expect(originalLayer.objects).toHaveLength(1);
+    expect(targetLayer.objects).toHaveLength(1);
+    expect(pastedPoint?.id).not.toBe(originalPoint.id);
+    expect(pastedPoint?.geometry.type).toBe('Point');
+    expect((pastedPoint?.geometry as { coordinates: number[] }).coordinates).not.toEqual(
+      (originalPoint.geometry as { coordinates: number[] }).coordinates,
+    );
+    expect(useEditorStore.getState().selectedObjectId).toBe(pastedPoint?.id);
+  });
+
+  it('creates independent duplicates and pasted copies of free draw segments', () => {
+    const store = useEditorStore.getState();
+    const freeDraw = createFreeDrawObject([
+      [0, 0],
+      [1, 0],
+    ]);
+    freeDraw.meta.sourceObjectId = 'root-free-draw';
+    store.addObjectToSelectedLayer(freeDraw);
+
+    store.duplicateSelectedObject();
+    let objects = useEditorStore.getState().project.layers[0]?.objects ?? [];
+    expect(objects).toHaveLength(2);
+    expect(objects[1]?.meta.sourceObjectId).toBeUndefined();
+
+    useEditorStore.getState().selectObject(freeDraw.id, useEditorStore.getState().selectedLayerId);
+    useEditorStore.getState().copySelectedObject();
+    useEditorStore.getState().pasteClipboardToSelectedLayer();
+
+    objects = useEditorStore.getState().project.layers[0]?.objects ?? [];
+    expect(objects).toHaveLength(3);
+    expect(objects[2]?.meta.sourceObjectId).toBeUndefined();
+  });
 });

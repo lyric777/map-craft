@@ -27,7 +27,9 @@ const getInitialTheme = (): ThemeMode => {
 function App() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  const mapToastTimerRef = useRef<number | null>(null);
   const [status, setStatus] = useState('Polygon tool ready.');
+  const [mapToastMessage, setMapToastMessage] = useState<string | null>(null);
   const [themeMode, setThemeMode] = useState<ThemeMode>(getInitialTheme);
   const [geometryEditMode, setGeometryEditMode] = useState<GeometryEditMode | null>(null);
   const state = useEditorStore(
@@ -36,6 +38,7 @@ function App() {
       selectedLayerId: store.selectedLayerId,
       selectedObjectId: store.selectedObjectId,
       currentTool: store.currentTool,
+      clipboardObject: store.clipboardObject,
       historyPast: store.historyPast,
       historyFuture: store.historyFuture,
       setCurrentTool: store.setCurrentTool,
@@ -48,6 +51,8 @@ function App() {
       selectLayer: store.selectLayer,
       updateSelectedObjectStyle: store.updateSelectedObjectStyle,
       deleteSelectedObject: store.deleteSelectedObject,
+      copySelectedObject: store.copySelectedObject,
+      pasteClipboardToSelectedLayer: store.pasteClipboardToSelectedLayer,
       duplicateSelectedObject: store.duplicateSelectedObject,
       undo: store.undo,
       redo: store.redo,
@@ -67,6 +72,18 @@ function App() {
     setGeometryEditMode(mode);
   }, []);
 
+  const showMapToast = useCallback((message: string) => {
+    setMapToastMessage(message);
+    if (mapToastTimerRef.current !== null) {
+      window.clearTimeout(mapToastTimerRef.current);
+    }
+
+    mapToastTimerRef.current = window.setTimeout(() => {
+      setMapToastMessage(null);
+      mapToastTimerRef.current = null;
+    }, 1600);
+  }, []);
+
   useEffect(() => {
     if (
       !activeObject ||
@@ -84,6 +101,12 @@ function App() {
     window.localStorage.setItem(THEME_STORAGE_KEY, themeMode);
   }, [themeMode]);
 
+  useEffect(() => () => {
+    if (mapToastTimerRef.current !== null) {
+      window.clearTimeout(mapToastTimerRef.current);
+    }
+  }, []);
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
@@ -92,18 +115,38 @@ function App() {
         return;
       }
 
-      const shortcutTool = TOOL_SHORTCUTS[event.key.toLowerCase()];
-      if (shortcutTool) {
-        event.preventDefault();
-        state.setCurrentTool(shortcutTool);
-        setStatus(`${shortcutTool} tool selected.`);
-        return;
-      }
+      const hasModifier = event.metaKey || event.ctrlKey || event.altKey;
 
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'd') {
         event.preventDefault();
         state.duplicateSelectedObject();
         setStatus('Selection duplicated.');
+        return;
+      }
+
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'c') {
+        event.preventDefault();
+        if (!activeObject) {
+          setStatus('Select an object to copy.');
+          return;
+        }
+
+        state.copySelectedObject();
+        setStatus('Selection copied.');
+        showMapToast('Selection copied.');
+        return;
+      }
+
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'v') {
+        event.preventDefault();
+        if (!state.clipboardObject) {
+          setStatus('Clipboard is empty.');
+          return;
+        }
+
+        state.pasteClipboardToSelectedLayer();
+        setStatus('Clipboard pasted into the active layer.');
+        showMapToast('Clipboard pasted into the active layer.');
         return;
       }
 
@@ -123,12 +166,24 @@ function App() {
         event.preventDefault();
         state.deleteSelectedObject();
         setStatus('Selection deleted.');
+        return;
+      }
+
+      if (hasModifier) {
+        return;
+      }
+
+      const shortcutTool = TOOL_SHORTCUTS[event.key.toLowerCase()];
+      if (shortcutTool) {
+        event.preventDefault();
+        state.setCurrentTool(shortcutTool);
+        setStatus(`${shortcutTool} tool selected.`);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [state]);
+  }, [activeObject, showMapToast, state]);
 
   const handleOpenFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -176,14 +231,36 @@ function App() {
       data-theme={themeMode}
     >
       <TopBar
+        canCopy={Boolean(activeObject)}
+        canPaste={Boolean(state.clipboardObject)}
         canRedo={state.historyFuture.length > 0}
         canUndo={state.historyPast.length > 0}
+        onCopy={() => {
+          if (!activeObject) {
+            setStatus('Select an object to copy.');
+            return;
+          }
+
+          state.copySelectedObject();
+          setStatus('Selection copied.');
+          showMapToast('Selection copied.');
+        }}
         onExportPng={handleExportPng}
         onNew={() => {
           state.newProject();
           setStatus('Started a new project.');
         }}
         onOpen={() => fileInputRef.current?.click()}
+        onPaste={() => {
+          if (!state.clipboardObject) {
+            setStatus('Clipboard is empty.');
+            return;
+          }
+
+          state.pasteClipboardToSelectedLayer();
+          setStatus('Clipboard pasted into the active layer.');
+          showMapToast('Clipboard pasted into the active layer.');
+        }}
         onRedo={() => {
           state.redo();
           setStatus('Redo applied.');
@@ -219,6 +296,7 @@ function App() {
         <main className="grid min-h-0 grid-rows-[minmax(0,1fr)_220px] gap-4 p-4">
           <MapCanvas
             geometryEditMode={geometryEditMode}
+            mapToastMessage={mapToastMessage}
             onMapReady={(map) => {
               mapRef.current = map;
             }}
@@ -255,7 +333,8 @@ function App() {
               </div>
               <div className="mt-6 text-xs text-subtle">
                 Shortcuts: `V` Move, `F` Free Draw, `E` Eraser, `P` Point, `L` Line, `B` Polygon,
-                `Delete` Remove, `Ctrl/Cmd+D` Duplicate, `Ctrl/Cmd+Z` Undo, `Ctrl/Cmd+Shift+Z` Redo.
+                `Delete` Remove, `Ctrl/Cmd+C` Copy, `Ctrl/Cmd+V` Paste, `Ctrl/Cmd+D` Duplicate,
+                `Ctrl/Cmd+Z` Undo, `Ctrl/Cmd+Shift+Z` Redo.
               </div>
             </section>
           </div>

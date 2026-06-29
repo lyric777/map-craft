@@ -128,6 +128,7 @@ export const createFreeDrawObject = (coordinates: Position[]): MapcraftObject =>
 
 const SMOOTHING_WINDOW_RADIUS = 2;
 const FREE_DRAW_SIMPLIFY_EPSILON = 0.00008;
+const PASTE_OFFSET_PX = 24;
 
 const getSmoothedCoordinate = (coordinates: Position[], index: number): Position => {
   if (index === 0 || index === coordinates.length - 1) {
@@ -570,6 +571,22 @@ export const isFreeDrawObject = (object: MapcraftObject | null) => {
 export const duplicateObject = (object: MapcraftObject): MapcraftObject => {
   const next = structuredClone(object);
   next.id = createId();
+  if ('sourceObjectId' in next.meta) {
+    delete next.meta.sourceObjectId;
+  }
+  return next;
+};
+
+export const createPastedObject = (object: MapcraftObject, zoom: number): MapcraftObject => {
+  const next = duplicateObject(object);
+  const degreesPerPixel = 360 / (256 * Math.pow(2, zoom));
+  const delta = degreesPerPixel * PASTE_OFFSET_PX;
+  const nextGeometry = translateGeometry(next.geometry, delta, -delta);
+
+  if (nextGeometry) {
+    next.geometry = nextGeometry;
+  }
+
   return next;
 };
 

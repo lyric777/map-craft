@@ -1,7 +1,13 @@
 import type { MapcraftLayer, MapcraftObject, MapcraftProject, ToolId } from '../types/project';
 import { create } from 'zustand';
 
-import { createDefaultLayer, createEmptyProject, duplicateObject, getSourceObjectId } from '../lib/project';
+import {
+  createDefaultLayer,
+  createEmptyProject,
+  createPastedObject,
+  duplicateObject,
+  getSourceObjectId,
+} from '../lib/project';
 
 interface EditorSnapshot {
   project: MapcraftProject;
@@ -11,6 +17,7 @@ interface EditorSnapshot {
 
 interface EditorState extends EditorSnapshot {
   currentTool: ToolId;
+  clipboardObject: MapcraftObject | null;
   historyPast: EditorSnapshot[];
   historyFuture: EditorSnapshot[];
   setCurrentTool: (tool: ToolId) => void;
@@ -29,6 +36,8 @@ interface EditorState extends EditorSnapshot {
   deleteObjectsByIds: (objectIds: string[]) => void;
   replaceObjectsById: (replacements: Array<{ objectId: string; objects: MapcraftObject[] }>) => void;
   deleteSelectedObject: () => void;
+  copySelectedObject: () => void;
+  pasteClipboardToSelectedLayer: () => void;
   duplicateSelectedObject: () => void;
   undo: () => void;
   redo: () => void;
@@ -68,6 +77,7 @@ const mutateWithHistory = (
 export const useEditorStore = create<EditorState>((set, get) => ({
   ...createInitialState(),
   currentTool: 'polygon',
+  clipboardObject: null,
   historyPast: [],
   historyFuture: [],
   setCurrentTool: (tool) => set({ currentTool: tool }),
@@ -96,6 +106,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set({
       ...initial,
       currentTool: 'polygon',
+      clipboardObject: null,
       historyPast: [],
       historyFuture: [],
     });
@@ -107,6 +118,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       selectedLayerId: firstLayerId,
       selectedObjectId: null,
       currentTool: 'polygon',
+      clipboardObject: null,
       historyPast: [],
       historyFuture: [],
     });
@@ -240,6 +252,37 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       layer.objects = layer.objects.filter((candidate) => candidate.id !== draft.selectedObjectId);
       draft.selectedObjectId = null;
     }),
+  copySelectedObject: () =>
+    set((state) => {
+      const layer = state.project.layers.find((candidate) => candidate.id === state.selectedLayerId);
+      const object = layer?.objects.find((candidate) => candidate.id === state.selectedObjectId);
+      if (!object) {
+        return state;
+      }
+
+      return {
+        clipboardObject: structuredClone(object),
+      };
+    }),
+  pasteClipboardToSelectedLayer: () => {
+    const state = get();
+    if (!state.clipboardObject) {
+      return;
+    }
+
+    mutateWithHistory(set, get, (draft) => {
+      const layer = draft.project.layers.find((candidate) => candidate.id === draft.selectedLayerId);
+      if (!layer) {
+        return;
+      }
+
+      const pastedObject = createPastedObject(state.clipboardObject!, draft.project.viewport.zoom);
+      layer.objects.push(pastedObject);
+      draft.selectedObjectId = pastedObject.id;
+    });
+
+    set({ currentTool: 'move' });
+  },
   duplicateSelectedObject: () =>
     mutateWithHistory(set, get, (draft) => {
       const layer = draft.project.layers.find((candidate) => candidate.id === draft.selectedLayerId);
