@@ -47,6 +47,7 @@ function App() {
       addLayer: store.addLayer,
       renameLayer: store.renameLayer,
       toggleLayerVisibility: store.toggleLayerVisibility,
+      toggleLayerLock: store.toggleLayerLock,
       reorderLayer: store.reorderLayer,
       selectLayer: store.selectLayer,
       updateSelectedObjectStyle: store.updateSelectedObjectStyle,
@@ -313,6 +314,11 @@ function App() {
               onReorderLayer={state.reorderLayer}
               onSelectLayer={state.selectLayer}
               onToggleLayer={state.toggleLayerVisibility}
+              onToggleLayerLock={(layerId) => {
+                state.toggleLayerLock(layerId);
+                const layer = state.project.layers.find((candidate) => candidate.id === layerId);
+                setStatus(layer?.locked ? 'Layer unlocked.' : 'Layer locked.');
+              }}
               selectedLayerId={state.selectedLayerId}
               selectedObjectId={state.selectedObjectId}
             />

@@ -12,6 +12,7 @@ describe('editor store', () => {
     const state = useEditorStore.getState();
     expect(state.project.layers).toHaveLength(1);
     expect(state.selectedLayerId).toBe(state.project.layers[0]?.id);
+    expect(state.project.layers[0]?.locked).toBe(false);
   });
 
   it('adds a polygon and supports undo/redo', () => {
@@ -266,5 +267,23 @@ describe('editor store', () => {
     objects = useEditorStore.getState().project.layers[0]?.objects ?? [];
     expect(objects).toHaveLength(3);
     expect(objects[2]?.meta.sourceObjectId).toBeUndefined();
+  });
+
+  it('locks a layer and clears the current selection inside that layer', () => {
+    const store = useEditorStore.getState();
+    const point = createPointObject([12, 34]);
+    store.addObjectToSelectedLayer(point);
+
+    const layerId = useEditorStore.getState().selectedLayerId!;
+    store.toggleLayerLock(layerId);
+
+    const layer = useEditorStore.getState().project.layers.find((candidate) => candidate.id === layerId);
+    expect(layer?.locked).toBe(true);
+    expect(useEditorStore.getState().selectedObjectId).toBeNull();
+
+    useEditorStore.getState().toggleLayerLock(layerId);
+    expect(
+      useEditorStore.getState().project.layers.find((candidate) => candidate.id === layerId)?.locked,
+    ).toBe(false);
   });
 });

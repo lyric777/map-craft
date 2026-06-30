@@ -22,6 +22,7 @@ export interface MapcraftLayer {
   id: string;
   name: string;
   visible: boolean;
+  locked: boolean;
   objects: MapcraftObject[];
 }
 

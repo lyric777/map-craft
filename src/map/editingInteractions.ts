@@ -16,9 +16,13 @@ import type { MapInteractionBindings } from './interactionBindings';
 const isFeatureSelectable = (feature: MapGeoJSONFeature | undefined): feature is MapGeoJSONFeature =>
   Boolean(feature?.properties?.objectId);
 
+const isFeatureLocked = (feature: MapGeoJSONFeature | undefined) =>
+  Boolean(feature?.properties?.layerLocked);
+
 export const createEditingHandlers = ({
   map,
   currentToolRef,
+  projectLayersRef,
   selectedLayerIdRef,
   selectedObjectRef,
   geometryEditModeRef,
@@ -69,6 +73,13 @@ export const createEditingHandlers = ({
       return null;
     }
 
+    const selectedLayer = projectLayersRef.current.find(
+      (candidate) => candidate.id === selectedLayerIdRef.current,
+    );
+    if (selectedLayer?.locked) {
+      return null;
+    }
+
     return object.type === 'line' || object.type === 'polygon' ? object : null;
   };
 
@@ -111,7 +122,7 @@ export const createEditingHandlers = ({
     }
 
     const feature = event.features?.[0];
-    if (!isFeatureSelectable(feature)) {
+    if (!isFeatureSelectable(feature) || isFeatureLocked(feature)) {
       return;
     }
 
@@ -141,7 +152,7 @@ export const createEditingHandlers = ({
     }
 
     const feature = event.features?.[0];
-    if (!isFeatureSelectable(feature)) {
+    if (!isFeatureSelectable(feature) || isFeatureLocked(feature)) {
       return;
     }
 
@@ -168,6 +179,10 @@ export const createEditingHandlers = ({
     }
 
     const feature = event.features?.[0];
+    if (isFeatureLocked(feature)) {
+      return;
+    }
+
     const nextIndex = Number(feature?.properties?.vertexIndex);
     if (Number.isNaN(nextIndex)) {
       return;
@@ -196,8 +211,11 @@ export const createEditingHandlers = ({
     const feature = event.features?.[0];
     const nextIndex = Number(feature?.properties?.vertexIndex);
     const object = selectedObjectRef.current;
+    const selectedLayer = projectLayersRef.current.find(
+      (candidate) => candidate.id === selectedLayerIdRef.current,
+    );
     const baseVertices = getEditableVertices(object);
-    if (Number.isNaN(nextIndex) || !baseVertices || !object) {
+    if (Number.isNaN(nextIndex) || !baseVertices || !object || selectedLayer?.locked) {
       return;
     }
 
@@ -273,7 +291,7 @@ export const createEditingHandlers = ({
     });
 
     const selectableFeature = interactiveFeatures.find(isFeatureSelectable);
-    if (selectableFeature) {
+    if (selectableFeature && !isFeatureLocked(selectableFeature)) {
       selectObjectRef.current(
         String(selectableFeature.properties.objectId),
         String(selectableFeature.properties.layerId),

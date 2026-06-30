@@ -65,6 +65,7 @@ export const createDefaultLayer = (name = 'Layer 1'): MapcraftLayer => ({
   id: createId(),
   name,
   visible: true,
+  locked: false,
   objects: [],
 });
 
@@ -778,6 +779,7 @@ export const projectToFeatureCollection = (
           objectId: object.id,
           sourceObjectId: getSourceObjectId(object),
           layerId: layer.id,
+          layerLocked: layer.locked,
           objectType: object.type,
           isFreeDraw: object.meta.drawingMode === 'freeDraw',
           fillColor: object.style.fillColor,

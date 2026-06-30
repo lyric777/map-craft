@@ -27,6 +27,7 @@ interface EditorState extends EditorSnapshot {
   addLayer: () => void;
   renameLayer: (layerId: string, name: string) => void;
   toggleLayerVisibility: (layerId: string) => void;
+  toggleLayerLock: (layerId: string) => void;
   reorderLayer: (layerId: string, direction: 'up' | 'down') => void;
   selectLayer: (layerId: string | null) => void;
   selectObject: (objectId: string | null, layerId?: string | null) => void;
@@ -142,6 +143,23 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const layer = draft.project.layers.find((candidate) => candidate.id === layerId);
       if (layer) {
         layer.visible = !layer.visible;
+      }
+    }),
+  toggleLayerLock: (layerId) =>
+    mutateWithHistory(set, get, (draft) => {
+      const layer = draft.project.layers.find((candidate) => candidate.id === layerId);
+      if (!layer) {
+        return;
+      }
+
+      layer.locked = !layer.locked;
+
+      if (
+        layer.locked &&
+        draft.selectedObjectId &&
+        layer.objects.some((candidate) => candidate.id === draft.selectedObjectId)
+      ) {
+        draft.selectedObjectId = null;
       }
     }),
   reorderLayer: (layerId, direction) =>

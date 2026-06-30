@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, Eye, EyeOff, Layers2, Plus } from 'lucide-react';
+import { ArrowDown, ArrowUp, Eye, EyeOff, Layers2, Lock, Plus, Unlock } from 'lucide-react';
 
 import type { MapcraftLayer } from '../types/project';
 
@@ -10,6 +10,7 @@ interface LayerPanelProps {
   onSelectLayer: (layerId: string) => void;
   onRenameLayer: (layerId: string, name: string) => void;
   onToggleLayer: (layerId: string) => void;
+  onToggleLayerLock: (layerId: string) => void;
   onReorderLayer: (layerId: string, direction: 'up' | 'down') => void;
 }
 
@@ -21,6 +22,7 @@ export function LayerPanel({
   onSelectLayer,
   onRenameLayer,
   onToggleLayer,
+  onToggleLayerLock,
   onReorderLayer,
 }: LayerPanelProps) {
   return (
@@ -70,6 +72,14 @@ export function LayerPanel({
                   {layer.visible ? <Eye size={16} /> : <EyeOff size={16} />}
                 </button>
                 <button
+                  className={`text-muted hover:text-foreground ${layer.locked ? 'text-foreground' : ''}`}
+                  onClick={() => onToggleLayerLock(layer.id)}
+                  title={layer.locked ? 'Unlock layer' : 'Lock layer'}
+                  type="button"
+                >
+                  {layer.locked ? <Lock size={16} /> : <Unlock size={16} />}
+                </button>
+                <button
                   className="text-muted hover:text-foreground disabled:opacity-30"
                   disabled={index === 0}
                   onClick={() => onReorderLayer(layer.id, 'up')}
@@ -90,6 +100,7 @@ export function LayerPanel({
               </div>
               <div className="mt-2 text-xs text-subtle">
                 {layer.objects.length} objects
+                {layer.locked ? ' · locked' : ''}
                 {active && selectedObjectId ? ' · selection active' : ''}
               </div>
             </div>
