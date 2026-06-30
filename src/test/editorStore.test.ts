@@ -286,4 +286,83 @@ describe('editor store', () => {
       useEditorStore.getState().project.layers.find((candidate) => candidate.id === layerId)?.locked,
     ).toBe(false);
   });
+
+  it('undoes and redoes clipboard paste', () => {
+    const store = useEditorStore.getState();
+    const originalPoint = createPointObject([12, 34]);
+    store.addObjectToSelectedLayer(originalPoint);
+    store.copySelectedObject();
+
+    useEditorStore.getState().pasteClipboardToSelectedLayer();
+    expect(useEditorStore.getState().project.layers[0]?.objects).toHaveLength(2);
+
+    useEditorStore.getState().undo();
+    expect(useEditorStore.getState().project.layers[0]?.objects).toHaveLength(1);
+
+    useEditorStore.getState().redo();
+    expect(useEditorStore.getState().project.layers[0]?.objects).toHaveLength(2);
+  });
+
+  it('undoes and redoes layer visibility and lock toggles', () => {
+    const store = useEditorStore.getState();
+    const layerId = store.selectedLayerId!;
+
+    store.toggleLayerVisibility(layerId);
+    store.toggleLayerLock(layerId);
+
+    let layer = useEditorStore.getState().project.layers.find((candidate) => candidate.id === layerId);
+    expect(layer?.visible).toBe(false);
+    expect(layer?.locked).toBe(true);
+
+    useEditorStore.getState().undo();
+    layer = useEditorStore.getState().project.layers.find((candidate) => candidate.id === layerId);
+    expect(layer?.visible).toBe(false);
+    expect(layer?.locked).toBe(false);
+
+    useEditorStore.getState().undo();
+    layer = useEditorStore.getState().project.layers.find((candidate) => candidate.id === layerId);
+    expect(layer?.visible).toBe(true);
+    expect(layer?.locked).toBe(false);
+
+    useEditorStore.getState().redo();
+    useEditorStore.getState().redo();
+    layer = useEditorStore.getState().project.layers.find((candidate) => candidate.id === layerId);
+    expect(layer?.visible).toBe(false);
+    expect(layer?.locked).toBe(true);
+  });
+
+  it('undoes and redoes layer add, rename, and reorder', () => {
+    const store = useEditorStore.getState();
+    const originalLayerId = store.selectedLayerId!;
+
+    store.addLayer();
+    const newLayerId = useEditorStore.getState().selectedLayerId!;
+    useEditorStore.getState().renameLayer(newLayerId, 'Reference');
+    useEditorStore.getState().reorderLayer(newLayerId, 'down');
+
+    let layers = useEditorStore.getState().project.layers;
+    expect(layers).toHaveLength(2);
+    expect(layers[0]?.id).toBe(originalLayerId);
+    expect(layers[1]?.name).toBe('Reference');
+
+    useEditorStore.getState().undo();
+    layers = useEditorStore.getState().project.layers;
+    expect(layers[0]?.id).toBe(newLayerId);
+
+    useEditorStore.getState().undo();
+    layers = useEditorStore.getState().project.layers;
+    expect(layers[0]?.name).toBe('Layer 2');
+
+    useEditorStore.getState().undo();
+    layers = useEditorStore.getState().project.layers;
+    expect(layers).toHaveLength(1);
+
+    useEditorStore.getState().redo();
+    useEditorStore.getState().redo();
+    useEditorStore.getState().redo();
+    layers = useEditorStore.getState().project.layers;
+    expect(layers).toHaveLength(2);
+    expect(layers[1]?.name).toBe('Reference');
+    expect(layers[0]?.id).toBe(originalLayerId);
+  });
 });
