@@ -26,6 +26,7 @@ export interface MapInteractionBindings {
   hoverVertexIndexRef: WritableRef<number | null>;
   dragVertexIndexRef: WritableRef<number | null>;
   previewVerticesRef: WritableRef<Position[] | null>;
+  snapCoordinateRef: WritableRef<Position | null>;
   hoverObjectIdRef: WritableRef<string | null>;
   dragObjectIdRef: WritableRef<string | null>;
   previewObjectGeometryRef: WritableRef<Geometry | null>;
@@ -42,6 +43,7 @@ export interface MapInteractionBindings {
   setHoverVertexIndex: Dispatch<SetStateAction<number | null>>;
   setDragVertexIndex: Dispatch<SetStateAction<number | null>>;
   setPreviewVertices: Dispatch<SetStateAction<Position[] | null>>;
+  setSnapCoordinate: Dispatch<SetStateAction<Position | null>>;
   setHoverObjectId: Dispatch<SetStateAction<string | null>>;
   setDragObjectId: Dispatch<SetStateAction<string | null>>;
   setPreviewObjectGeometry: Dispatch<SetStateAction<Geometry | null>>;

@@ -233,6 +233,7 @@ export const registerEditorLayers = (map: maplibregl.Map) => {
     id: 'edit-vertex-hit',
     type: 'circle',
     source: EDIT_SOURCE_ID,
+    filter: ['has', 'vertexIndex'],
     paint: {
       'circle-radius': 12,
       'circle-opacity': 0,
@@ -243,6 +244,7 @@ export const registerEditorLayers = (map: maplibregl.Map) => {
     id: 'edit-vertices',
     type: 'circle',
     source: EDIT_SOURCE_ID,
+    filter: ['has', 'vertexIndex'],
     paint: {
       'circle-radius': [
         'case',
@@ -262,6 +264,19 @@ export const registerEditorLayers = (map: maplibregl.Map) => {
       ],
       'circle-stroke-width': 2,
       'circle-stroke-color': '#0f172a',
+    },
+  });
+
+  map.addLayer({
+    id: 'edit-snap-target',
+    type: 'circle',
+    source: EDIT_SOURCE_ID,
+    filter: ['==', ['get', 'isSnapTarget'], true],
+    paint: {
+      'circle-radius': 10,
+      'circle-color': 'rgba(0, 0, 0, 0)',
+      'circle-stroke-width': 3,
+      'circle-stroke-color': '#ffd166',
     },
   });
 };

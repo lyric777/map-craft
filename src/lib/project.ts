@@ -803,25 +803,39 @@ export const vertexHandlesToFeatureCollection = (
   vertices: Position[],
   hoveredIndex: number | null,
   draggingIndex: number | null,
+  snapCoordinate: Position | null = null,
 ): FeatureCollection<Geometry> => {
-  if (vertices.length === 0) {
+  if (vertices.length === 0 && !snapCoordinate) {
     return EMPTY_FEATURE_COLLECTION;
+  }
+
+  const features: Feature<Geometry>[] = vertices.map((coordinate, index) => ({
+    type: 'Feature',
+    geometry: {
+      type: 'Point',
+      coordinates: cloneCoordinate(coordinate),
+    },
+    properties: {
+      vertexIndex: index,
+      isHover: hoveredIndex === index,
+      isDragging: draggingIndex === index,
+    },
+  }));
+
+  if (snapCoordinate) {
+    features.push({
+      type: 'Feature',
+      geometry: {
+        type: 'Point',
+        coordinates: cloneCoordinate(snapCoordinate),
+      },
+      properties: { isSnapTarget: true },
+    });
   }
 
   return {
     type: 'FeatureCollection',
-    features: vertices.map((coordinate, index) => ({
-      type: 'Feature',
-      geometry: {
-        type: 'Point',
-        coordinates: cloneCoordinate(coordinate),
-      },
-      properties: {
-        vertexIndex: index,
-        isHover: hoveredIndex === index,
-        isDragging: draggingIndex === index,
-      },
-    })),
+    features,
   };
 };
 

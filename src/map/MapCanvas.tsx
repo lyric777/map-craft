@@ -53,6 +53,7 @@ export function MapCanvas({
   const [hoverVertexIndex, setHoverVertexIndex] = useState<number | null>(null);
   const [dragVertexIndex, setDragVertexIndex] = useState<number | null>(null);
   const [previewVertices, setPreviewVertices] = useState<Position[] | null>(null);
+  const [snapCoordinate, setSnapCoordinate] = useState<Position | null>(null);
   const [hoverObjectId, setHoverObjectId] = useState<string | null>(null);
   const [dragObjectId, setDragObjectId] = useState<string | null>(null);
   const [previewObjectGeometry, setPreviewObjectGeometry] = useState<Geometry | null>(null);
@@ -201,8 +202,13 @@ export function MapCanvas({
   }, [closeToStart, currentTool, draftCoordinates, freeDrawCoordinates, hoverCoordinate]);
 
   const editGeoJson = useMemo(
-    () => vertexHandlesToFeatureCollection(selectedEditableVertices, hoverVertexIndex, dragVertexIndex),
-    [dragVertexIndex, hoverVertexIndex, selectedEditableVertices],
+    () => vertexHandlesToFeatureCollection(
+      selectedEditableVertices,
+      hoverVertexIndex,
+      dragVertexIndex,
+      snapCoordinate,
+    ),
+    [dragVertexIndex, hoverVertexIndex, selectedEditableVertices, snapCoordinate],
   );
 
   const currentToolRef = useRef(currentTool);
@@ -224,6 +230,7 @@ export function MapCanvas({
   const hoverVertexIndexRef = useRef<number | null>(hoverVertexIndex);
   const dragVertexIndexRef = useRef<number | null>(dragVertexIndex);
   const previewVerticesRef = useRef<Position[] | null>(previewVertices);
+  const snapCoordinateRef = useRef<Position | null>(snapCoordinate);
   const hoverObjectIdRef = useRef<string | null>(hoverObjectId);
   const dragObjectIdRef = useRef<string | null>(dragObjectId);
   const previewObjectGeometryRef = useRef<Geometry | null>(previewObjectGeometry);
@@ -256,6 +263,7 @@ export function MapCanvas({
     hoverVertexIndexRef.current = hoverVertexIndex;
     dragVertexIndexRef.current = dragVertexIndex;
     previewVerticesRef.current = previewVertices;
+    snapCoordinateRef.current = snapCoordinate;
     hoverObjectIdRef.current = hoverObjectId;
     dragObjectIdRef.current = dragObjectId;
     previewObjectGeometryRef.current = previewObjectGeometry;
@@ -283,6 +291,7 @@ export function MapCanvas({
     objectsGeoJson,
     previewObjectGeometry,
     previewVertices,
+    snapCoordinate,
     freeDrawScreenPoints,
     selectObject,
     selectedLayerId,
@@ -326,6 +335,7 @@ export function MapCanvas({
       dragVertexIndexRef.current = null;
       hoverVertexIndexRef.current = null;
       previewVerticesRef.current = null;
+      snapCoordinateRef.current = null;
       dragObjectIdRef.current = null;
       hoverObjectIdRef.current = null;
       previewObjectGeometryRef.current = null;
@@ -336,6 +346,7 @@ export function MapCanvas({
       setDragVertexIndex(null);
       setHoverVertexIndex(null);
       setPreviewVertices(null);
+      setSnapCoordinate(null);
       setDragObjectId(null);
       setHoverObjectId(null);
       setPreviewObjectGeometry(null);
@@ -413,6 +424,7 @@ export function MapCanvas({
       hoverVertexIndexRef,
       dragVertexIndexRef,
       previewVerticesRef,
+      snapCoordinateRef,
       hoverObjectIdRef,
       dragObjectIdRef,
       previewObjectGeometryRef,
@@ -429,6 +441,7 @@ export function MapCanvas({
       setHoverVertexIndex,
       setDragVertexIndex,
       setPreviewVertices,
+      setSnapCoordinate,
       setHoverObjectId,
       setDragObjectId,
       setPreviewObjectGeometry,
@@ -520,6 +533,7 @@ export function MapCanvas({
       hoverVertexIndexRef.current = null;
       dragVertexIndexRef.current = null;
       previewVerticesRef.current = null;
+      snapCoordinateRef.current = null;
       hoverObjectIdRef.current = null;
       dragObjectIdRef.current = null;
       previewObjectGeometryRef.current = null;
@@ -529,6 +543,7 @@ export function MapCanvas({
       setHoverVertexIndex(null);
       setDragVertexIndex(null);
       setPreviewVertices(null);
+      setSnapCoordinate(null);
       setHoverObjectId(null);
       setDragObjectId(null);
       setPreviewObjectGeometry(null);
@@ -576,6 +591,7 @@ export function MapCanvas({
       hoverVertexIndexRef.current = null;
       dragVertexIndexRef.current = null;
       previewVerticesRef.current = null;
+      snapCoordinateRef.current = null;
       hoverObjectIdRef.current = null;
       dragObjectIdRef.current = null;
       previewObjectGeometryRef.current = null;
@@ -585,6 +601,7 @@ export function MapCanvas({
       setHoverVertexIndex(null);
       setDragVertexIndex(null);
       setPreviewVertices(null);
+      setSnapCoordinate(null);
       setHoverObjectId(null);
       setDragObjectId(null);
       setPreviewObjectGeometry(null);

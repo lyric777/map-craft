@@ -12,6 +12,7 @@ import {
 } from '../lib/project';
 import { OBJECT_INTERACTIVE_LAYER_IDS } from './constants';
 import type { MapInteractionBindings } from './interactionBindings';
+import { findNearestSnapVertex, findObjectSnapTranslation } from './snapping';
 
 const isFeatureSelectable = (feature: MapGeoJSONFeature | undefined): feature is MapGeoJSONFeature =>
   Boolean(feature?.properties?.objectId);
@@ -33,6 +34,7 @@ export const createEditingHandlers = ({
   hoverVertexIndexRef,
   dragVertexIndexRef,
   previewVerticesRef,
+  snapCoordinateRef,
   hoverObjectIdRef,
   dragObjectIdRef,
   previewObjectGeometryRef,
@@ -44,6 +46,7 @@ export const createEditingHandlers = ({
   setHoverVertexIndex,
   setDragVertexIndex,
   setPreviewVertices,
+  setSnapCoordinate,
   setHoverObjectId,
   setDragObjectId,
   setPreviewObjectGeometry,
@@ -325,9 +328,24 @@ export const createEditingHandlers = ({
         return true;
       }
 
+      const pointer = { x: event.point.x, y: event.point.y };
+      const snapCoordinate = selectedObjectRef.current
+        ? findNearestSnapVertex(
+            projectLayersRef.current,
+            selectedObjectRef.current.id,
+            pointer,
+            (coordinate) => {
+              const projected = map.project({ lng: coordinate[0], lat: coordinate[1] });
+              return { x: projected.x, y: projected.y };
+            },
+          )
+        : null;
+      const draggedCoordinate = snapCoordinate ?? ([event.lngLat.lng, event.lngLat.lat] as Position);
+      snapCoordinateRef.current = snapCoordinate;
+      setSnapCoordinate(snapCoordinate);
       dragMovedRef.current = true;
       const nextVertices = baseVertices.map((coordinate, index) =>
-        index === activeVertexIndex ? ([event.lngLat.lng, event.lngLat.lat] as Position) : coordinate,
+        index === activeVertexIndex ? draggedCoordinate : coordinate,
       );
       previewVerticesRef.current = nextVertices;
       setPreviewVertices(nextVertices);
@@ -340,11 +358,34 @@ export const createEditingHandlers = ({
     if (activeObjectId && dragOrigin && baseGeometry) {
       const deltaLng = event.lngLat.lng - dragOrigin[0];
       const deltaLat = event.lngLat.lat - dragOrigin[1];
-      const nextGeometry = translateGeometry(baseGeometry, deltaLng, deltaLat);
+      const translatedGeometry = translateGeometry(baseGeometry, deltaLng, deltaLat);
+      const selectedObject = selectedObjectRef.current;
+      if (!translatedGeometry || !selectedObject) {
+        return true;
+      }
+
+      const snapTranslation = findObjectSnapTranslation(
+        projectLayersRef.current,
+        { ...selectedObject, geometry: translatedGeometry },
+        (coordinate) => {
+          const projected = map.project({ lng: coordinate[0], lat: coordinate[1] });
+          return { x: projected.x, y: projected.y };
+        },
+      );
+      const nextGeometry = snapTranslation
+        ? translateGeometry(
+            translatedGeometry,
+            snapTranslation.deltaLng,
+            snapTranslation.deltaLat,
+          )
+        : translatedGeometry;
       if (!nextGeometry) {
         return true;
       }
 
+      const snapCoordinate = snapTranslation?.targetCoordinate ?? null;
+      snapCoordinateRef.current = snapCoordinate;
+      setSnapCoordinate(snapCoordinate);
       dragMovedRef.current = true;
       previewObjectGeometryRef.current = nextGeometry;
       setPreviewObjectGeometry(nextGeometry);

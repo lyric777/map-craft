@@ -10,6 +10,7 @@ Current state:
 
 Recent finished work:
 
+- vertex snapping V1 for line / polygon vertex dragging
 - copy / paste with app-internal clipboard
 - map-area toast feedback for copy / paste
 - lock layer with actual interaction blocking
@@ -21,11 +22,17 @@ Current known status:
 - core drawing / editing loop is in a usable state
 - main remaining risk area is interaction polish, not base architecture
 
-Most likely next feature:
+Most likely next feature should be chosen from the broader product backlog, including:
 
-- `Move Selected Object To Layer`
-- or `snapping V1`
-- or `free draw / eraser` interaction polish
+- switchable basemaps
+- map visual styles
+- brush / stroke styles
+- geographic change recording / timeline design
+- free draw / eraser interaction polish
+
+Product decision:
+
+- do not add `Move Selected Object To Layer`; copying to the target layer and deleting the original is the accepted workflow
 
 Important caution for the next thread:
 
@@ -324,11 +331,21 @@ Still worth manual smoke testing when making future changes:
 
 ## Suggested Next Steps
 
-If continuing from the current state, reasonable next candidates are:
+Vertex snapping V1 is complete. It currently:
 
-1. `Move Selected Object To Layer`
-2. snapping V1
-3. free draw / eraser interaction polish
+- snaps a dragged line / polygon vertex to vertices on other point, line, or polygon objects
+- snaps a whole dragged point, line, or polygon by its nearest vertex while preserving its shape
+- uses a 10px screen-space threshold
+- ignores hidden layers, locked layers, free draw strokes, and the selected object itself
+- shows a yellow snap-target ring
+
+If continuing from the current state, choose the next feature from the product backlog rather than assuming interaction polish is always highest priority:
+
+1. switchable basemaps
+2. map visual styles
+3. brush / stroke styles
+4. geographic change recording / timeline design
+5. free draw / eraser interaction polish
 
 Lower priority for now:
 
