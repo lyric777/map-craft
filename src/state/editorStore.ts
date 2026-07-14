@@ -1,4 +1,10 @@
-import type { MapcraftLayer, MapcraftObject, MapcraftProject, ToolId } from '../types/project';
+import type {
+  BasemapPresetId,
+  MapcraftLayer,
+  MapcraftObject,
+  MapcraftProject,
+  ToolId,
+} from '../types/project';
 import { create } from 'zustand';
 
 import {
@@ -22,6 +28,7 @@ interface EditorState extends EditorSnapshot {
   historyFuture: EditorSnapshot[];
   setCurrentTool: (tool: ToolId) => void;
   setViewport: (viewport: MapcraftProject['viewport']) => void;
+  setBasemapPreset: (preset: BasemapPresetId) => void;
   newProject: () => void;
   openProject: (project: MapcraftProject) => void;
   addLayer: () => void;
@@ -102,6 +109,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         },
       };
     }),
+  setBasemapPreset: (preset) => {
+    if (get().project.basemapPreset === preset) {
+      return;
+    }
+
+    mutateWithHistory(set, get, (draft) => {
+      draft.project.basemapPreset = preset;
+    });
+  },
   newProject: () => {
     const initial = createInitialState();
     set({

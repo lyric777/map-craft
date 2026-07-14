@@ -1,5 +1,6 @@
 import type { FeatureCollection, Geometry } from 'geojson';
 import type { StyleSpecification } from 'maplibre-gl';
+import { BASEMAP_BACKGROUND_LAYER_ID, BASEMAP_RASTER_LAYER_ID } from './basemap';
 
 export const BASEMAP_STYLE: StyleSpecification = {
   version: 8,
@@ -13,7 +14,14 @@ export const BASEMAP_STYLE: StyleSpecification = {
   },
   layers: [
     {
-      id: 'osm',
+      id: BASEMAP_BACKGROUND_LAYER_ID,
+      type: 'background',
+      paint: {
+        'background-color': '#d7e6ec',
+      },
+    },
+    {
+      id: BASEMAP_RASTER_LAYER_ID,
       type: 'raster',
       source: 'osm',
     },

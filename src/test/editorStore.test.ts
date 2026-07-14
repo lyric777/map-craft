@@ -13,6 +13,20 @@ describe('editor store', () => {
     expect(state.project.layers).toHaveLength(1);
     expect(state.selectedLayerId).toBe(state.project.layers[0]?.id);
     expect(state.project.layers[0]?.locked).toBe(false);
+    expect(state.project.basemapPreset).toBe('standard');
+  });
+
+  it('changes the basemap preset and supports undo/redo', () => {
+    const store = useEditorStore.getState();
+
+    store.setBasemapPreset('dark');
+    expect(useEditorStore.getState().project.basemapPreset).toBe('dark');
+
+    useEditorStore.getState().undo();
+    expect(useEditorStore.getState().project.basemapPreset).toBe('standard');
+
+    useEditorStore.getState().redo();
+    expect(useEditorStore.getState().project.basemapPreset).toBe('dark');
   });
 
   it('adds a polygon and supports undo/redo', () => {

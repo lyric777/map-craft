@@ -42,6 +42,7 @@ function App() {
       historyPast: store.historyPast,
       historyFuture: store.historyFuture,
       setCurrentTool: store.setCurrentTool,
+      setBasemapPreset: store.setBasemapPreset,
       newProject: store.newProject,
       openProject: store.openProject,
       addLayer: store.addLayer,
@@ -296,8 +297,13 @@ function App() {
         />
         <main className="grid min-h-0 grid-rows-[minmax(0,1fr)_220px] gap-4 p-4">
           <MapCanvas
+            basemapPreset={state.project.basemapPreset}
             geometryEditMode={geometryEditMode}
             mapToastMessage={mapToastMessage}
+            onBasemapPresetChange={(preset) => {
+              state.setBasemapPreset(preset);
+              setStatus(`Basemap switched to ${preset}.`);
+            }}
             onMapReady={(map) => {
               mapRef.current = map;
             }}

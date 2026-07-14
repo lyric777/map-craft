@@ -10,6 +10,7 @@ Current state:
 
 Recent finished work:
 
+- basemap appearance presets: Standard, Light, Dark, Grayscale, and No Basemap
 - vertex snapping V1 for line / polygon vertex dragging
 - copy / paste with app-internal clipboard
 - map-area toast feedback for copy / paste
@@ -24,9 +25,9 @@ Current known status:
 
 Most likely next feature should be chosen from the broader product backlog, including:
 
-- switchable basemaps
 - map visual styles
 - brush / stroke styles
+- third-party terrain / satellite basemap sources
 - geographic change recording / timeline design
 - free draw / eraser interaction polish
 
@@ -85,6 +86,7 @@ Explicitly out of scope for the current project direction:
 - single MapLibre viewport
 - pan / zoom
 - OSM raster basemap
+- project-persisted basemap appearance presets
 - viewport persisted in project file
 
 ### Drawing
@@ -341,9 +343,9 @@ Vertex snapping V1 is complete. It currently:
 
 If continuing from the current state, choose the next feature from the product backlog rather than assuming interaction polish is always highest priority:
 
-1. switchable basemaps
-2. map visual styles
-3. brush / stroke styles
+1. brush / stroke styles
+2. map visual styles beyond the basemap
+3. third-party terrain / satellite basemap sources
 4. geographic change recording / timeline design
 5. free draw / eraser interaction polish
 

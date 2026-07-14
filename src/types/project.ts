@@ -2,6 +2,7 @@ import type { Geometry, Position } from 'geojson';
 
 export type MapObjectType = 'point' | 'line' | 'polygon';
 export type ToolId = 'move' | 'freeDraw' | 'eraser' | 'point' | 'line' | 'polygon';
+export type BasemapPresetId = 'standard' | 'light' | 'dark' | 'grayscale' | 'none';
 
 export interface MapObjectStyle {
   fillColor: string;
@@ -33,6 +34,7 @@ export interface MapcraftViewport {
 
 export interface MapcraftProject {
   version: '0.1';
+  basemapPreset: BasemapPresetId;
   viewport: MapcraftViewport;
   layers: MapcraftLayer[];
 }

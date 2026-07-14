@@ -1,11 +1,11 @@
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 import type { Geometry, Position } from 'geojson';
-import type { MapcraftObject } from '../types/project';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import { useShallow } from 'zustand/react/shallow';
 
+import { BasemapControl } from '../app/BasemapControl';
 import {
   buildGeometryFromVertices,
   draftLineToFeatureCollection,
@@ -16,7 +16,8 @@ import {
   projectToFeatureCollection,
   vertexHandlesToFeatureCollection,
 } from '../lib/project';
-import { getCursorForState } from './cursor';
+import type { BasemapPresetId, MapcraftObject } from '../types/project';
+import { applyBasemapPreset } from './basemap';
 import {
   BASEMAP_STYLE,
   DRAFT_SOURCE_ID,
@@ -24,14 +25,17 @@ import {
   EMPTY_GEOJSON,
   OBJECTS_SOURCE_ID,
 } from './constants';
+import { getCursorForState } from './cursor';
 import { bindMapInteractions } from './interactions';
 import { registerEditorLayers } from './layers';
 import { selectActiveObject, useEditorStore } from '../state/editorStore';
 import type { GeometryEditMode, ScreenPoint } from './types';
 
 interface MapCanvasProps {
+  basemapPreset: BasemapPresetId;
   geometryEditMode: GeometryEditMode | null;
   mapToastMessage?: string | null;
+  onBasemapPresetChange: (preset: BasemapPresetId) => void;
   onMapReady: (map: maplibregl.Map) => void;
   onGeometryEditModeChange: (mode: GeometryEditMode | null) => void;
 }
@@ -40,8 +44,10 @@ const instructionClassName =
   'pointer-events-none absolute left-3 top-3 rounded-md border border-white/10 bg-slate-950/60 px-3 py-2 text-xs text-white shadow-[0_4px_10px_rgba(15,23,42,0.18)]';
 
 export function MapCanvas({
+  basemapPreset,
   geometryEditMode,
   mapToastMessage = null,
+  onBasemapPresetChange,
   onMapReady,
   onGeometryEditModeChange,
 }: MapCanvasProps) {
@@ -212,6 +218,7 @@ export function MapCanvas({
   );
 
   const currentToolRef = useRef(currentTool);
+  const basemapPresetRef = useRef(basemapPreset);
   const geometryEditModeRef = useRef<GeometryEditMode | null>(geometryEditMode);
   const onMapReadyRef = useRef(onMapReady);
   const onGeometryEditModeChangeRef = useRef(onGeometryEditModeChange);
@@ -246,6 +253,7 @@ export function MapCanvas({
 
   useEffect(() => {
     currentToolRef.current = currentTool;
+    basemapPresetRef.current = basemapPreset;
     geometryEditModeRef.current = geometryEditMode;
     onMapReadyRef.current = onMapReady;
     onGeometryEditModeChangeRef.current = onGeometryEditModeChange;
@@ -273,6 +281,7 @@ export function MapCanvas({
     closeToStartRef.current = closeToStart;
   }, [
     closeToStart,
+    basemapPreset,
     currentTool,
     draftCoordinates,
     draftGeoJson,
@@ -370,6 +379,7 @@ export function MapCanvas({
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
 
     map.on('load', () => {
+      applyBasemapPreset(map, basemapPresetRef.current);
       map.addSource(OBJECTS_SOURCE_ID, {
         type: 'geojson',
         data: objectsGeoJsonRef.current,
@@ -465,6 +475,15 @@ export function MapCanvas({
       mapRef.current = null;
     };
   }, [addObjectToSelectedLayer, replaceObjectsById]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) {
+      return;
+    }
+
+    applyBasemapPreset(map, basemapPreset);
+  }, [basemapPreset]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -636,6 +655,7 @@ export function MapCanvas({
         ref={mapContainerRef}
         className="h-full w-full"
       />
+      <BasemapControl preset={basemapPreset} onChange={onBasemapPresetChange} />
       {currentTool === 'move' && geometryEditMode === 'insertVertex' && (
         <div className={instructionClassName}>Click an edge to add a vertex.</div>
       )}

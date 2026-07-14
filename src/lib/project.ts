@@ -71,6 +71,7 @@ export const createDefaultLayer = (name = 'Layer 1'): MapcraftLayer => ({
 
 export const createEmptyProject = (): MapcraftProject => ({
   version: '0.1',
+  basemapPreset: 'standard',
   viewport: DEFAULT_VIEWPORT,
   layers: [createDefaultLayer()],
 });
