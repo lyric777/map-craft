@@ -13,20 +13,20 @@ describe('editor store', () => {
     expect(state.project.layers).toHaveLength(1);
     expect(state.selectedLayerId).toBe(state.project.layers[0]?.id);
     expect(state.project.layers[0]?.locked).toBe(false);
-    expect(state.project.basemapPreset).toBe('standard');
+    expect(state.project.basemapPreset).toBe('road');
   });
 
   it('changes the basemap preset and supports undo/redo', () => {
     const store = useEditorStore.getState();
 
-    store.setBasemapPreset('dark');
-    expect(useEditorStore.getState().project.basemapPreset).toBe('dark');
+    store.setBasemapPreset('terrain');
+    expect(useEditorStore.getState().project.basemapPreset).toBe('terrain');
 
     useEditorStore.getState().undo();
-    expect(useEditorStore.getState().project.basemapPreset).toBe('standard');
+    expect(useEditorStore.getState().project.basemapPreset).toBe('road');
 
     useEditorStore.getState().redo();
-    expect(useEditorStore.getState().project.basemapPreset).toBe('dark');
+    expect(useEditorStore.getState().project.basemapPreset).toBe('terrain');
   });
 
   it('adds a polygon and supports undo/redo', () => {

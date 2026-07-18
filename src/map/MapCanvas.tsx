@@ -377,6 +377,7 @@ export function MapCanvas({
     };
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+    map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
 
     map.on('load', () => {
       applyBasemapPreset(map, basemapPresetRef.current);

@@ -28,7 +28,7 @@ export function BasemapControl({ preset, onChange }: BasemapControlProps) {
       {open ? (
         <div
           aria-label="Basemap styles"
-          className="mt-2 w-44 rounded-md border border-border bg-panel p-2 shadow-panel"
+          className="mt-2 w-52 rounded-md border border-border bg-panel p-2 shadow-panel"
           role="menu"
         >
           <div className="px-2 pb-2 text-xs font-medium uppercase tracking-wide text-subtle">
@@ -53,7 +53,10 @@ export function BasemapControl({ preset, onChange }: BasemapControlProps) {
                   role="menuitemradio"
                   type="button"
                 >
-                  <span>{option.label}</span>
+                  <span>
+                    <span className="block">{option.label}</span>
+                    <span className="block text-xs text-subtle">{option.description}</span>
+                  </span>
                   {selected ? <Check aria-hidden="true" size={15} /> : null}
                 </button>
               );

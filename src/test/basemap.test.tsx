@@ -5,18 +5,19 @@ import { BasemapControl } from '../app/BasemapControl';
 import {
   applyBasemapPreset,
   BASEMAP_BACKGROUND_LAYER_ID,
+  BASEMAP_HYDROGRAPHY_LAYER_IDS,
   BASEMAP_PRESETS,
-  BASEMAP_RASTER_LAYER_ID,
+  BASEMAP_ROAD_LAYER_ID,
+  BASEMAP_TERRAIN_LAYER_ID,
   getBasemapPreset,
 } from '../map/basemap';
 
 describe('basemap presets', () => {
-  it('defines all V1 presets and applies their map properties', () => {
+  it('defines content-based basemaps and applies layer visibility', () => {
     expect(BASEMAP_PRESETS.map((preset) => preset.id)).toEqual([
-      'standard',
-      'light',
-      'dark',
-      'grayscale',
+      'road',
+      'terrain',
+      'hydrography',
       'none',
     ]);
 
@@ -28,32 +29,40 @@ describe('basemap presets', () => {
       setLayoutProperty,
     };
 
-    applyBasemapPreset(map as never, 'none');
+    applyBasemapPreset(map as never, 'hydrography');
 
     expect(setPaintProperty).toHaveBeenCalledWith(
       BASEMAP_BACKGROUND_LAYER_ID,
       'background-color',
-      getBasemapPreset('none').backgroundColor,
+      getBasemapPreset('hydrography').backgroundColor,
     );
     expect(setLayoutProperty).toHaveBeenCalledWith(
-      BASEMAP_RASTER_LAYER_ID,
+      BASEMAP_ROAD_LAYER_ID,
       'visibility',
       'none',
     );
+    expect(setLayoutProperty).toHaveBeenCalledWith(
+      BASEMAP_TERRAIN_LAYER_ID,
+      'visibility',
+      'none',
+    );
+    BASEMAP_HYDROGRAPHY_LAYER_IDS.forEach((layerId) => {
+      expect(setLayoutProperty).toHaveBeenCalledWith(layerId, 'visibility', 'visible');
+    });
   });
 
-  it('opens the menu, marks the active preset, and selects another preset', () => {
+  it('opens the menu, marks the active basemap, and selects another one', () => {
     const onChange = vi.fn();
-    render(<BasemapControl preset="standard" onChange={onChange} />);
+    render(<BasemapControl preset="road" onChange={onChange} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Choose basemap style' }));
-    expect(screen.getByRole('menuitemradio', { name: 'Standard' })).toHaveAttribute(
+    expect(screen.getByRole('menuitemradio', { name: /Road/ })).toHaveAttribute(
       'aria-checked',
       'true',
     );
 
-    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Dark' }));
-    expect(onChange).toHaveBeenCalledWith('dark');
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /Terrain/ }));
+    expect(onChange).toHaveBeenCalledWith('terrain');
     expect(screen.queryByRole('menu', { name: 'Basemap styles' })).not.toBeInTheDocument();
   });
 });

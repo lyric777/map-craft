@@ -10,7 +10,7 @@ Current state:
 
 Recent finished work:
 
-- basemap appearance presets: Standard, Light, Dark, Grayscale, and No Basemap
+- content-based basemap selection: Road, Terrain, Hydrography, and Blank
 - vertex snapping V1 for line / polygon vertex dragging
 - copy / paste with app-internal clipboard
 - map-area toast feedback for copy / paste
@@ -85,8 +85,10 @@ Explicitly out of scope for the current project direction:
 
 - single MapLibre viewport
 - pan / zoom
-- OSM raster basemap
-- project-persisted basemap appearance presets
+- Road basemap using OSM raster tiles
+- Terrain basemap using OpenTopoMap tiles
+- Hydrography basemap using OpenFreeMap/OpenMapTiles water and waterway vector layers
+- project-persisted basemap selection with legacy appearance-preset migration
 - viewport persisted in project file
 
 ### Drawing

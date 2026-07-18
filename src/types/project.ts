@@ -2,7 +2,7 @@ import type { Geometry, Position } from 'geojson';
 
 export type MapObjectType = 'point' | 'line' | 'polygon';
 export type ToolId = 'move' | 'freeDraw' | 'eraser' | 'point' | 'line' | 'polygon';
-export type BasemapPresetId = 'standard' | 'light' | 'dark' | 'grayscale' | 'none';
+export type BasemapPresetId = 'road' | 'terrain' | 'hydrography' | 'none';
 
 export interface MapObjectStyle {
   fillColor: string;

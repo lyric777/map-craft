@@ -4,10 +4,25 @@ const PROJECT_MIME = 'application/json';
 
 export const serializeProject = (project: MapcraftProject) => JSON.stringify(project, null, 2);
 
-const BASEMAP_PRESETS: BasemapPresetId[] = ['standard', 'light', 'dark', 'grayscale', 'none'];
+const BASEMAP_PRESETS: BasemapPresetId[] = ['road', 'terrain', 'hydrography', 'none'];
+
+const LEGACY_APPEARANCE_PRESETS: Record<string, BasemapPresetId> = {
+  standard: 'road',
+  light: 'road',
+  dark: 'road',
+  grayscale: 'road',
+};
 
 const isBasemapPreset = (value: unknown): value is BasemapPresetId =>
   typeof value === 'string' && BASEMAP_PRESETS.includes(value as BasemapPresetId);
+
+const normalizeBasemapPreset = (value: unknown): BasemapPresetId => {
+  if (isBasemapPreset(value)) {
+    return value;
+  }
+
+  return typeof value === 'string' ? LEGACY_APPEARANCE_PRESETS[value] ?? 'road' : 'road';
+};
 
 export const parseProject = (value: string): MapcraftProject => {
   const parsed = JSON.parse(value) as Partial<MapcraftProject>;
@@ -18,7 +33,7 @@ export const parseProject = (value: string): MapcraftProject => {
 
   return {
     ...parsed,
-    basemapPreset: isBasemapPreset(parsed.basemapPreset) ? parsed.basemapPreset : 'standard',
+    basemapPreset: normalizeBasemapPreset(parsed.basemapPreset),
   } as MapcraftProject;
 };
 
