@@ -4,6 +4,7 @@ import {
   BASEMAP_BACKGROUND_LAYER_ID,
   BASEMAP_HYDROGRAPHY_LAYER_IDS,
   BASEMAP_ROAD_LAYER_ID,
+  BASEMAP_SATELLITE_LAYER_ID,
   BASEMAP_TERRAIN_LAYER_ID,
 } from './basemap';
 
@@ -15,6 +16,16 @@ export const BASEMAP_STYLE: StyleSpecification = {
       tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
       tileSize: 256,
       attribution: '&copy; OpenStreetMap contributors',
+    },
+    satellite: {
+      type: 'raster',
+      tiles: [
+        'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/BlueMarble_ShadedRelief_Bathymetry/default/GoogleMapsCompatible_Level8/{z}/{y}/{x}.jpeg',
+      ],
+      tileSize: 256,
+      maxzoom: 8,
+      attribution:
+        '<a href="https://www.earthdata.nasa.gov/eosdis/science-system-description/eosdis-components/gibs">NASA EOSDIS GIBS</a>: Blue Marble',
     },
     terrain: {
       type: 'raster',
@@ -46,6 +57,14 @@ export const BASEMAP_STYLE: StyleSpecification = {
       id: BASEMAP_ROAD_LAYER_ID,
       type: 'raster',
       source: 'road',
+    },
+    {
+      id: BASEMAP_SATELLITE_LAYER_ID,
+      type: 'raster',
+      source: 'satellite',
+      layout: {
+        visibility: 'none',
+      },
     },
     {
       id: BASEMAP_TERRAIN_LAYER_ID,

@@ -4,6 +4,7 @@ import type { BasemapPresetId } from '../types/project';
 
 export const BASEMAP_BACKGROUND_LAYER_ID = 'basemap-background';
 export const BASEMAP_ROAD_LAYER_ID = 'basemap-road';
+export const BASEMAP_SATELLITE_LAYER_ID = 'basemap-satellite';
 export const BASEMAP_TERRAIN_LAYER_ID = 'basemap-terrain';
 export const BASEMAP_HYDROGRAPHY_LAYER_IDS = [
   'basemap-hydrography-water',
@@ -12,6 +13,7 @@ export const BASEMAP_HYDROGRAPHY_LAYER_IDS = [
 
 const ALL_CONTENT_LAYER_IDS = [
   BASEMAP_ROAD_LAYER_ID,
+  BASEMAP_SATELLITE_LAYER_ID,
   BASEMAP_TERRAIN_LAYER_ID,
   ...BASEMAP_HYDROGRAPHY_LAYER_IDS,
 ] as const;
@@ -31,6 +33,13 @@ export const BASEMAP_PRESETS: BasemapPresetDefinition[] = [
     description: 'Roads, cities, and places',
     backgroundColor: '#d7e6ec',
     visibleLayerIds: [BASEMAP_ROAD_LAYER_ID],
+  },
+  {
+    id: 'satellite',
+    label: 'Satellite',
+    description: 'NASA global satellite imagery',
+    backgroundColor: '#0b1820',
+    visibleLayerIds: [BASEMAP_SATELLITE_LAYER_ID],
   },
   {
     id: 'terrain',

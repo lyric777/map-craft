@@ -28,8 +28,8 @@ describe('project io', () => {
 
   it('preserves a basemap preset and migrates older appearance presets to road', () => {
     const project = createEmptyProject();
-    project.basemapPreset = 'hydrography';
-    expect(parseProject(serializeProject(project)).basemapPreset).toBe('hydrography');
+    project.basemapPreset = 'satellite';
+    expect(parseProject(serializeProject(project)).basemapPreset).toBe('satellite');
 
     const legacyProject = structuredClone(project) as Partial<typeof project>;
     delete legacyProject.basemapPreset;

@@ -8,6 +8,7 @@ import {
   BASEMAP_HYDROGRAPHY_LAYER_IDS,
   BASEMAP_PRESETS,
   BASEMAP_ROAD_LAYER_ID,
+  BASEMAP_SATELLITE_LAYER_ID,
   BASEMAP_TERRAIN_LAYER_ID,
   getBasemapPreset,
 } from '../map/basemap';
@@ -16,6 +17,7 @@ describe('basemap presets', () => {
   it('defines content-based basemaps and applies layer visibility', () => {
     expect(BASEMAP_PRESETS.map((preset) => preset.id)).toEqual([
       'road',
+      'satellite',
       'terrain',
       'hydrography',
       'none',
@@ -38,6 +40,11 @@ describe('basemap presets', () => {
     );
     expect(setLayoutProperty).toHaveBeenCalledWith(
       BASEMAP_ROAD_LAYER_ID,
+      'visibility',
+      'none',
+    );
+    expect(setLayoutProperty).toHaveBeenCalledWith(
+      BASEMAP_SATELLITE_LAYER_ID,
       'visibility',
       'none',
     );

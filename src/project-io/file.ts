@@ -4,7 +4,13 @@ const PROJECT_MIME = 'application/json';
 
 export const serializeProject = (project: MapcraftProject) => JSON.stringify(project, null, 2);
 
-const BASEMAP_PRESETS: BasemapPresetId[] = ['road', 'terrain', 'hydrography', 'none'];
+const BASEMAP_PRESETS: BasemapPresetId[] = [
+  'road',
+  'satellite',
+  'terrain',
+  'hydrography',
+  'none',
+];
 
 const LEGACY_APPEARANCE_PRESETS: Record<string, BasemapPresetId> = {
   standard: 'road',
