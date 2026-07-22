@@ -20,12 +20,12 @@ export const BASEMAP_STYLE: StyleSpecification = {
     satellite: {
       type: 'raster',
       tiles: [
-        'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/BlueMarble_ShadedRelief_Bathymetry/default/GoogleMapsCompatible_Level8/{z}/{y}/{x}.jpeg',
+        'https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2025_3857/default/g/{z}/{y}/{x}.jpg',
       ],
       tileSize: 256,
-      maxzoom: 8,
+      maxzoom: 14,
       attribution:
-        '<a href="https://www.earthdata.nasa.gov/eosdis/science-system-description/eosdis-components/gibs">NASA EOSDIS GIBS</a>: Blue Marble',
+        '<a href="https://cloudless.eox.at">EOxCloudless</a> by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2025)',
     },
     terrain: {
       type: 'raster',

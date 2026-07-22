@@ -37,7 +37,7 @@ export const BASEMAP_PRESETS: BasemapPresetDefinition[] = [
   {
     id: 'satellite',
     label: 'Satellite',
-    description: 'NASA global satellite imagery',
+    description: '2025 Sentinel-2 cloudless imagery',
     backgroundColor: '#0b1820',
     visibleLayerIds: [BASEMAP_SATELLITE_LAYER_ID],
   },
