@@ -6,6 +6,7 @@ import maplibregl from 'maplibre-gl';
 import { useShallow } from 'zustand/react/shallow';
 
 import { BasemapControl } from '../app/BasemapControl';
+import { ViewModeControl, type ViewMode } from '../app/ViewModeControl';
 import {
   buildGeometryFromVertices,
   draftLineToFeatureCollection,
@@ -42,6 +43,7 @@ interface MapCanvasProps {
 
 const instructionClassName =
   'pointer-events-none absolute left-3 top-3 rounded-md border border-white/10 bg-slate-950/60 px-3 py-2 text-xs text-white shadow-[0_4px_10px_rgba(15,23,42,0.18)]';
+const THREE_D_PITCH = 55;
 
 export function MapCanvas({
   basemapPreset,
@@ -53,6 +55,7 @@ export function MapCanvas({
 }: MapCanvasProps) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('2d');
   const [draftCoordinates, setDraftCoordinates] = useState<Position[]>([]);
   const [hoverCoordinate, setHoverCoordinate] = useState<Position | null>(null);
   const [hoverSegmentIndex, setHoverSegmentIndex] = useState<number | null>(null);
@@ -376,7 +379,10 @@ export function MapCanvas({
       updateCanvasCursor();
     };
 
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+    map.addControl(
+      new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }),
+      'top-right',
+    );
     map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
 
     map.on('load', () => {
@@ -650,12 +656,26 @@ export function MapCanvas({
     map.jumpTo({ center: center as [number, number], zoom });
   }, [project.viewport]);
 
+  const handleViewModeChange = (nextMode: ViewMode) => {
+    if (nextMode === viewMode) {
+      return;
+    }
+
+    setViewMode(nextMode);
+    mapRef.current?.easeTo({
+      pitch: nextMode === '3d' ? THREE_D_PITCH : 0,
+      bearing: nextMode === '3d' ? mapRef.current.getBearing() : 0,
+      duration: 650,
+    });
+  };
+
   return (
     <div className="relative h-full w-full overflow-hidden rounded-md border border-border bg-panelAlt">
       <div
         ref={mapContainerRef}
         className="h-full w-full"
       />
+      <ViewModeControl mode={viewMode} onChange={handleViewModeChange} />
       <BasemapControl preset={basemapPreset} onChange={onBasemapPresetChange} />
       {currentTool === 'move' && geometryEditMode === 'insertVertex' && (
         <div className={instructionClassName}>Click an edge to add a vertex.</div>
