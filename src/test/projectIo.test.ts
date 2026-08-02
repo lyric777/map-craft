@@ -38,4 +38,20 @@ describe('project io', () => {
       parseProject(JSON.stringify({ ...legacyProject, basemapPreset: 'dark' })).basemapPreset,
     ).toBe('road');
   });
+
+  it('adds flat camera defaults to projects saved before perspective views', () => {
+    const project = createEmptyProject();
+    const legacyProject = structuredClone(project) as unknown as {
+      viewport: { center: number[]; zoom: number; pitch?: number; bearing?: number };
+    };
+    delete legacyProject.viewport.pitch;
+    delete legacyProject.viewport.bearing;
+
+    expect(parseProject(JSON.stringify(legacyProject)).viewport).toEqual({
+      center: [0, 20],
+      zoom: 2.5,
+      pitch: 0,
+      bearing: 0,
+    });
+  });
 });

@@ -33,13 +33,24 @@ const normalizeBasemapPreset = (value: unknown): BasemapPresetId => {
 export const parseProject = (value: string): MapcraftProject => {
   const parsed = JSON.parse(value) as Partial<MapcraftProject>;
 
-  if (parsed.version !== '0.1' || !Array.isArray(parsed.layers)) {
+  if (
+    parsed.version !== '0.1' ||
+    !Array.isArray(parsed.layers) ||
+    !parsed.viewport ||
+    !Array.isArray(parsed.viewport.center) ||
+    typeof parsed.viewport.zoom !== 'number'
+  ) {
     throw new Error('Invalid .mapcraft project');
   }
 
   return {
     ...parsed,
     basemapPreset: normalizeBasemapPreset(parsed.basemapPreset),
+    viewport: {
+      ...parsed.viewport,
+      pitch: typeof parsed.viewport.pitch === 'number' ? parsed.viewport.pitch : 0,
+      bearing: typeof parsed.viewport.bearing === 'number' ? parsed.viewport.bearing : 0,
+    },
   } as MapcraftProject;
 };
 

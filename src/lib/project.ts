@@ -46,6 +46,8 @@ const EMPTY_FEATURE_COLLECTION: FeatureCollection<Geometry> = {
 export const DEFAULT_VIEWPORT: MapcraftViewport = {
   center: [0, 20],
   zoom: 2.5,
+  pitch: 0,
+  bearing: 0,
 };
 
 export const DEFAULT_STYLE = {

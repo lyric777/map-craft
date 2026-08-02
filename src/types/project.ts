@@ -30,6 +30,8 @@ export interface MapcraftLayer {
 export interface MapcraftViewport {
   center: Position;
   zoom: number;
+  pitch: number;
+  bearing: number;
 }
 
 export interface MapcraftProject {

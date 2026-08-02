@@ -55,7 +55,6 @@ export function MapCanvas({
 }: MapCanvasProps) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>('2d');
   const [draftCoordinates, setDraftCoordinates] = useState<Position[]>([]);
   const [hoverCoordinate, setHoverCoordinate] = useState<Position | null>(null);
   const [hoverSegmentIndex, setHoverSegmentIndex] = useState<number | null>(null);
@@ -93,6 +92,9 @@ export function MapCanvas({
       selectObject: state.selectObject,
       updateSelectedObjectGeometry: state.updateSelectedObjectGeometry,
     })),
+  );
+  const [viewMode, setViewMode] = useState<ViewMode>(
+    project.viewport.pitch > 0 ? '3d' : '2d',
   );
   const selectedObject = useMemo(
     () => selectActiveObject(project.layers, selectedLayerId, selectedObjectId),
@@ -323,6 +325,8 @@ export function MapCanvas({
       style: BASEMAP_STYLE,
       center: initialViewport.center as [number, number],
       zoom: initialViewport.zoom,
+      pitch: initialViewport.pitch,
+      bearing: initialViewport.bearing,
       attributionControl: false,
       canvasContextAttributes: {
         preserveDrawingBuffer: true,
@@ -411,7 +415,10 @@ export function MapCanvas({
       setViewportRef.current({
         center: [center.lng, center.lat],
         zoom: map.getZoom(),
+        pitch: map.getPitch(),
+        bearing: map.getBearing(),
       });
+      setViewMode(map.getPitch() > 0 ? '3d' : '2d');
     });
 
     map.on('dragstart', () => {
@@ -644,16 +651,20 @@ export function MapCanvas({
       return;
     }
 
-    const { center, zoom } = project.viewport;
+    const { center, zoom, pitch, bearing } = project.viewport;
     const mapCenter = map.getCenter();
     const centerChanged = mapCenter.lng !== center[0] || mapCenter.lat !== center[1];
     const zoomChanged = map.getZoom() !== zoom;
+    const pitchChanged = map.getPitch() !== pitch;
+    const bearingChanged = map.getBearing() !== bearing;
 
-    if (!centerChanged && !zoomChanged) {
+    setViewMode(pitch > 0 ? '3d' : '2d');
+
+    if (!centerChanged && !zoomChanged && !pitchChanged && !bearingChanged) {
       return;
     }
 
-    map.jumpTo({ center: center as [number, number], zoom });
+    map.jumpTo({ center: center as [number, number], zoom, pitch, bearing });
   }, [project.viewport]);
 
   const handleViewModeChange = (nextMode: ViewMode) => {

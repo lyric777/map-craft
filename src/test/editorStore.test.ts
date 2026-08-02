@@ -14,6 +14,26 @@ describe('editor store', () => {
     expect(state.selectedLayerId).toBe(state.project.layers[0]?.id);
     expect(state.project.layers[0]?.locked).toBe(false);
     expect(state.project.basemapPreset).toBe('road');
+    expect(state.project.viewport).toEqual({
+      center: [0, 20],
+      zoom: 2.5,
+      pitch: 0,
+      bearing: 0,
+    });
+  });
+
+  it('updates the full camera viewport without adding history', () => {
+    const store = useEditorStore.getState();
+
+    store.setViewport({ center: [12, 34], zoom: 8, pitch: 55, bearing: -20 });
+
+    expect(useEditorStore.getState().project.viewport).toEqual({
+      center: [12, 34],
+      zoom: 8,
+      pitch: 55,
+      bearing: -20,
+    });
+    expect(useEditorStore.getState().historyPast).toHaveLength(0);
   });
 
   it('changes the basemap preset and supports undo/redo', () => {

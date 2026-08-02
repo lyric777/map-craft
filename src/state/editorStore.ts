@@ -96,7 +96,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const sameViewport =
         currentLng === nextLng &&
         currentLat === nextLat &&
-        state.project.viewport.zoom === viewport.zoom;
+        state.project.viewport.zoom === viewport.zoom &&
+        state.project.viewport.pitch === viewport.pitch &&
+        state.project.viewport.bearing === viewport.bearing;
 
       if (sameViewport) {
         return state;

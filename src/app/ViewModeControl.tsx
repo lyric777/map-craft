@@ -9,7 +9,7 @@ export function ViewModeControl({ mode, onChange }: ViewModeControlProps) {
   return (
     <div
       aria-label="Map view"
-      className="absolute right-3 top-[128px] z-10 flex overflow-hidden rounded-md border border-white/20 bg-white text-xs font-semibold text-slate-700 shadow-md"
+      className="absolute right-[10px] top-[168px] z-10 flex overflow-hidden rounded-md border border-white/20 bg-white text-xs font-semibold text-slate-700 shadow-md"
       role="group"
     >
       {(['2d', '3d'] as const).map((option) => (

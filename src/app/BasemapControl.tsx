@@ -13,7 +13,7 @@ export function BasemapControl({ preset, onChange }: BasemapControlProps) {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="absolute right-3 top-[88px] z-10">
+    <div className="absolute right-[10px] top-[128px] z-10">
       <button
         aria-expanded={open}
         aria-label="Choose basemap style"
