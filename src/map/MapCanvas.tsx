@@ -30,6 +30,7 @@ import { getCursorForState } from './cursor';
 import { bindMapInteractions } from './interactions';
 import { registerEditorLayers } from './layers';
 import { selectActiveObject, useEditorStore } from '../state/editorStore';
+import { setTerrainEnabled, TERRAIN_DEM_SOURCE_ID } from './terrain';
 import type { GeometryEditMode, ScreenPoint } from './types';
 
 interface MapCanvasProps {
@@ -67,6 +68,7 @@ export function MapCanvas({
   const [previewObjectGeometry, setPreviewObjectGeometry] = useState<Geometry | null>(null);
   const [freeDrawScreenPoints, setFreeDrawScreenPoints] = useState<ScreenPoint[]>([]);
   const [isFreeDrawing, setIsFreeDrawing] = useState(false);
+  const [terrainUnavailable, setTerrainUnavailable] = useState(false);
   const [eraserPreviewReplacements, setEraserPreviewReplacements] = useState<
     Array<{ objectId: string; objects: MapcraftObject[] }>
   >([]);
@@ -235,6 +237,7 @@ export function MapCanvas({
   const draftGeoJsonRef = useRef(draftGeoJson);
   const editGeoJsonRef = useRef(editGeoJson);
   const initialViewportRef = useRef(project.viewport);
+  const viewportRef = useRef(project.viewport);
   const draftCoordinatesRef = useRef<Position[]>(draftCoordinates);
   const selectedLayerIdRef = useRef(selectedLayerId);
   const selectedObjectRef = useRef(selectedObject);
@@ -269,6 +272,7 @@ export function MapCanvas({
     objectsGeoJsonRef.current = objectsGeoJson;
     draftGeoJsonRef.current = draftGeoJson;
     editGeoJsonRef.current = editGeoJson;
+    viewportRef.current = project.viewport;
     draftCoordinatesRef.current = draftCoordinates;
     selectedLayerIdRef.current = selectedLayerId;
     selectedObjectRef.current = selectedObject;
@@ -302,6 +306,7 @@ export function MapCanvas({
     onGeometryEditModeChange,
     onMapReady,
     project.layers,
+    project.viewport,
     objectsGeoJson,
     previewObjectGeometry,
     previewVertices,
@@ -391,6 +396,8 @@ export function MapCanvas({
 
     map.on('load', () => {
       applyBasemapPreset(map, basemapPresetRef.current);
+      const terrainEnabled = viewportRef.current.pitch > 0;
+      setTerrainUnavailable(terrainEnabled && !setTerrainEnabled(map, terrainEnabled));
       map.addSource(OBJECTS_SOURCE_ID, {
         type: 'geojson',
         data: objectsGeoJsonRef.current,
@@ -406,6 +413,18 @@ export function MapCanvas({
         data: editGeoJsonRef.current,
       });
       registerEditorLayers(map);
+    });
+
+    map.on('error', (event: { sourceId?: string }) => {
+      if (
+        event.sourceId !== TERRAIN_DEM_SOURCE_ID ||
+        map.getTerrain()?.source !== TERRAIN_DEM_SOURCE_ID
+      ) {
+        return;
+      }
+
+      setTerrainEnabled(map, false);
+      setTerrainUnavailable(true);
     });
 
     map.on('moveend', () => {
@@ -660,6 +679,11 @@ export function MapCanvas({
 
     setViewMode(pitch > 0 ? '3d' : '2d');
 
+    if (map.isStyleLoaded()) {
+      const terrainEnabled = pitch > 0;
+      setTerrainUnavailable(terrainEnabled && !setTerrainEnabled(map, terrainEnabled));
+    }
+
     if (!centerChanged && !zoomChanged && !pitchChanged && !bearingChanged) {
       return;
     }
@@ -673,9 +697,16 @@ export function MapCanvas({
     }
 
     setViewMode(nextMode);
-    mapRef.current?.easeTo({
+    const map = mapRef.current;
+    if (!map) {
+      return;
+    }
+
+    const terrainEnabled = nextMode === '3d';
+    setTerrainUnavailable(terrainEnabled && !setTerrainEnabled(map, terrainEnabled));
+    map.easeTo({
       pitch: nextMode === '3d' ? THREE_D_PITCH : 0,
-      bearing: nextMode === '3d' ? mapRef.current.getBearing() : 0,
+      bearing: nextMode === '3d' ? map.getBearing() : 0,
       duration: 650,
     });
   };
@@ -714,9 +745,9 @@ export function MapCanvas({
           Drag across free draw strokes to erase them.
         </div>
       )}
-      {mapToastMessage && (
+      {(terrainUnavailable || mapToastMessage) && (
         <div className="pointer-events-none absolute bottom-3 left-3 rounded-md border border-white/10 bg-slate-950/60 px-3 py-2 text-xs text-white shadow-[0_4px_10px_rgba(15,23,42,0.18)]">
-          {mapToastMessage}
+          {terrainUnavailable ? 'Terrain unavailable. Showing flat perspective.' : mapToastMessage}
         </div>
       )}
     </div>
