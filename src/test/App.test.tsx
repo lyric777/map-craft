@@ -54,6 +54,7 @@ describe('App', () => {
         strokeColor: '#ffffff',
         strokeWidth: 2,
         opacity: 0.45,
+        extrusionHeight: 0,
       },
       meta: {},
     });

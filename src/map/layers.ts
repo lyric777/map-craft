@@ -1,8 +1,23 @@
 import maplibregl from 'maplibre-gl';
 
-import { DRAFT_SOURCE_ID, EDIT_SOURCE_ID, OBJECTS_SOURCE_ID } from './constants';
+import {
+  DRAFT_SOURCE_ID,
+  EDIT_SOURCE_ID,
+  OBJECTS_SOURCE_ID,
+  POLYGON_EXTRUSION_LAYER_ID,
+} from './constants';
 
-export const registerEditorLayers = (map: maplibregl.Map) => {
+export const setPolygonExtrusionsVisible = (map: maplibregl.Map, visible: boolean) => {
+  if (map.getLayer(POLYGON_EXTRUSION_LAYER_ID)) {
+    map.setLayoutProperty(
+      POLYGON_EXTRUSION_LAYER_ID,
+      'visibility',
+      visible ? 'visible' : 'none',
+    );
+  }
+};
+
+export const registerEditorLayers = (map: maplibregl.Map, showExtrusions = false) => {
   map.addLayer({
     id: 'polygon-fill',
     type: 'fill',
@@ -11,6 +26,34 @@ export const registerEditorLayers = (map: maplibregl.Map) => {
     paint: {
       'fill-color': ['coalesce', ['get', 'fillColor'], '#45c4ff'],
       'fill-opacity': ['coalesce', ['get', 'opacity'], 0.45],
+    },
+  });
+
+  map.addLayer({
+    id: POLYGON_EXTRUSION_LAYER_ID,
+    type: 'fill-extrusion',
+    source: OBJECTS_SOURCE_ID,
+    filter: [
+      'all',
+      ['==', ['geometry-type'], 'Polygon'],
+      ['>', ['coalesce', ['get', 'extrusionHeight'], 0], 0],
+    ],
+    layout: {
+      visibility: showExtrusions ? 'visible' : 'none',
+    },
+    paint: {
+      'fill-extrusion-color': [
+        'case',
+        ['boolean', ['get', 'isSelected'], false],
+        '#ffd166',
+        ['boolean', ['get', 'isHovered'], false],
+        '#7dd3fc',
+        ['coalesce', ['get', 'fillColor'], '#45c4ff'],
+      ],
+      'fill-extrusion-height': ['coalesce', ['get', 'extrusionHeight'], 0],
+      'fill-extrusion-base': 0,
+      'fill-extrusion-opacity': ['coalesce', ['get', 'opacity'], 0.45],
+      'fill-extrusion-vertical-gradient': true,
     },
   });
 

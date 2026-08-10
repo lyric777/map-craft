@@ -43,7 +43,7 @@ export const parseProject = (value: string): MapcraftProject => {
     throw new Error('Invalid .mapcraft project');
   }
 
-  return {
+  const project = {
     ...parsed,
     basemapPreset: normalizeBasemapPreset(parsed.basemapPreset),
     viewport: {
@@ -52,6 +52,16 @@ export const parseProject = (value: string): MapcraftProject => {
       bearing: typeof parsed.viewport.bearing === 'number' ? parsed.viewport.bearing : 0,
     },
   } as MapcraftProject;
+
+  project.layers.forEach((layer) => {
+    layer.objects.forEach((object) => {
+      const height = object.style.extrusionHeight;
+      object.style.extrusionHeight =
+        typeof height === 'number' && Number.isFinite(height) && height >= 0 ? height : 0;
+    });
+  });
+
+  return project;
 };
 
 export const downloadProjectFile = (project: MapcraftProject) => {

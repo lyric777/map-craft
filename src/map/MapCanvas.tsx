@@ -28,7 +28,7 @@ import {
 } from './constants';
 import { getCursorForState } from './cursor';
 import { bindMapInteractions } from './interactions';
-import { registerEditorLayers } from './layers';
+import { registerEditorLayers, setPolygonExtrusionsVisible } from './layers';
 import { selectActiveObject, useEditorStore } from '../state/editorStore';
 import { setTerrainEnabled, TERRAIN_DEM_SOURCE_ID } from './terrain';
 import type { GeometryEditMode, ScreenPoint } from './types';
@@ -412,7 +412,7 @@ export function MapCanvas({
         type: 'geojson',
         data: editGeoJsonRef.current,
       });
-      registerEditorLayers(map);
+      registerEditorLayers(map, terrainEnabled);
     });
 
     map.on('error', (event: { sourceId?: string }) => {
@@ -682,6 +682,7 @@ export function MapCanvas({
     if (map.isStyleLoaded()) {
       const terrainEnabled = pitch > 0;
       setTerrainUnavailable(terrainEnabled && !setTerrainEnabled(map, terrainEnabled));
+      setPolygonExtrusionsVisible(map, terrainEnabled);
     }
 
     if (!centerChanged && !zoomChanged && !pitchChanged && !bearingChanged) {
@@ -704,6 +705,7 @@ export function MapCanvas({
 
     const terrainEnabled = nextMode === '3d';
     setTerrainUnavailable(terrainEnabled && !setTerrainEnabled(map, terrainEnabled));
+    setPolygonExtrusionsVisible(map, terrainEnabled);
     map.easeTo({
       pitch: nextMode === '3d' ? THREE_D_PITCH : 0,
       bearing: nextMode === '3d' ? map.getBearing() : 0,

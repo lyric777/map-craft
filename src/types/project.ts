@@ -9,6 +9,7 @@ export interface MapObjectStyle {
   strokeColor: string;
   strokeWidth: number;
   opacity: number;
+  extrusionHeight: number;
 }
 
 export interface MapcraftObject {

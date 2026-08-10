@@ -141,6 +141,28 @@ export function InspectorPanel({
             <div className="mt-1 text-xs text-subtle">{Math.round(object.style.opacity * 100)}%</div>
           </label>
 
+          {object.type === 'polygon' ? (
+            <label className="block">
+              <span className={labelClassName}>3D Height</span>
+              <input
+                className="w-full accent-accent"
+                max={500}
+                min={0}
+                step={5}
+                type="range"
+                value={object.style.extrusionHeight}
+                onChange={(event) =>
+                  onStyleChange({ extrusionHeight: Number(event.target.value) })
+                }
+              />
+              <div className="mt-1 text-xs text-subtle">
+                {object.style.extrusionHeight === 0
+                  ? 'Flat'
+                  : `${object.style.extrusionHeight} m`}
+              </div>
+            </label>
+          ) : null}
+
           <div className="grid grid-cols-2 gap-3">
             <button
               className="inline-flex items-center justify-center gap-2 rounded-md border border-border bg-panelAlt px-3 py-2 text-sm text-foreground hover:border-accent"

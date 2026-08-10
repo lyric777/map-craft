@@ -118,10 +118,12 @@ export const BASEMAP_STYLE: StyleSpecification = {
 export const OBJECTS_SOURCE_ID = 'objects';
 export const DRAFT_SOURCE_ID = 'draft';
 export const EDIT_SOURCE_ID = 'edit-vertices';
+export const POLYGON_EXTRUSION_LAYER_ID = 'polygon-extrusion';
 
 export const OBJECT_INTERACTIVE_LAYER_IDS = [
   'polygon-fill-hit',
   'polygon-line-hit',
+  POLYGON_EXTRUSION_LAYER_ID,
   'line-string-hit',
   'points-hit',
   'polygon-fill',

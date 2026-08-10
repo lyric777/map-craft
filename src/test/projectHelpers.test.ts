@@ -204,11 +204,19 @@ describe('project helpers', () => {
       [2, 2],
       [3, 3],
     ]);
-    layer.objects.push(freeDraw, line);
+    const polygon = createPolygonObject([
+      [4, 4],
+      [5, 4],
+      [5, 5],
+      [4, 4],
+    ]);
+    polygon.style.extrusionHeight = 140;
+    layer.objects.push(freeDraw, line, polygon);
 
     const collection = projectToFeatureCollection([layer], freeDraw.id, line.id);
     const freeDrawFeature = collection.features.find((feature) => feature.id === freeDraw.id);
     const lineFeature = collection.features.find((feature) => feature.id === line.id);
+    const polygonFeature = collection.features.find((feature) => feature.id === polygon.id);
 
     expect(freeDrawFeature?.properties).toMatchObject({
       objectId: freeDraw.id,
@@ -227,6 +235,7 @@ describe('project helpers', () => {
       isSelected: false,
       isHovered: true,
     });
+    expect(polygonFeature?.properties).toMatchObject({ extrusionHeight: 140 });
   });
 
   it('smooths and simplifies free draw coordinates while keeping endpoints', () => {

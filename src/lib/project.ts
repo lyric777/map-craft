@@ -55,6 +55,7 @@ export const DEFAULT_STYLE = {
   strokeColor: '#ffffff',
   strokeWidth: 2,
   opacity: 0.45,
+  extrusionHeight: 0,
 };
 
 const createId = () => crypto.randomUUID();
@@ -789,6 +790,7 @@ export const projectToFeatureCollection = (
           strokeColor: object.style.strokeColor,
           strokeWidth: object.style.strokeWidth,
           opacity: object.style.opacity,
+          extrusionHeight: object.style.extrusionHeight,
           isSelected: object.id === selectedObjectId,
           isHovered: object.id === hoveredObjectId,
         },

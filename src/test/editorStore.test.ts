@@ -80,11 +80,26 @@ describe('editor store', () => {
       ]),
     );
 
-    store.updateSelectedObjectStyle({ fillColor: '#ff0000', opacity: 0.6 });
+    store.updateSelectedObjectStyle({
+      fillColor: '#ff0000',
+      opacity: 0.6,
+      extrusionHeight: 120,
+    });
 
     const object = useEditorStore.getState().project.layers[0]?.objects[0];
     expect(object?.style.fillColor).toBe('#ff0000');
     expect(object?.style.opacity).toBe(0.6);
+    expect(object?.style.extrusionHeight).toBe(120);
+
+    useEditorStore.getState().undo();
+    expect(
+      useEditorStore.getState().project.layers[0]?.objects[0]?.style.extrusionHeight,
+    ).toBe(0);
+
+    useEditorStore.getState().redo();
+    expect(
+      useEditorStore.getState().project.layers[0]?.objects[0]?.style.extrusionHeight,
+    ).toBe(120);
   });
 
   it('updates selected line geometry and supports undo/redo', () => {
