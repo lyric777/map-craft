@@ -12,13 +12,14 @@ import {
 } from '../lib/project';
 import { OBJECT_INTERACTIVE_LAYER_IDS } from './constants';
 import type { MapInteractionBindings } from './interactionBindings';
+import { findSelectablePolygonAtCoordinate } from './selection';
 import { findNearestSnapVertex, findObjectSnapTranslation } from './snapping';
 
 const isFeatureSelectable = (feature: MapGeoJSONFeature | undefined): feature is MapGeoJSONFeature =>
   Boolean(feature?.properties?.objectId);
 
 const isFeatureLocked = (feature: MapGeoJSONFeature | undefined) =>
-  Boolean(feature?.properties?.layerLocked);
+  feature?.properties?.layerLocked === true || feature?.properties?.layerLocked === 'true';
 
 export const createEditingHandlers = ({
   map,
@@ -289,18 +290,34 @@ export const createEditingHandlers = ({
       return true;
     }
 
-    const interactiveFeatures = map.queryRenderedFeatures(event.point, {
+    const hitPadding = 4;
+    const interactiveFeatures = map.queryRenderedFeatures(
+      [
+        [event.point.x - hitPadding, event.point.y - hitPadding],
+        [event.point.x + hitPadding, event.point.y + hitPadding],
+      ],
+      {
       layers: [...OBJECT_INTERACTIVE_LAYER_IDS],
-    });
+      },
+    );
 
-    const selectableFeature = interactiveFeatures.find(isFeatureSelectable);
-    if (selectableFeature && !isFeatureLocked(selectableFeature)) {
+    const selectableFeature = interactiveFeatures.find(
+      (feature) => isFeatureSelectable(feature) && !isFeatureLocked(feature),
+    );
+    if (selectableFeature) {
       selectObjectRef.current(
         String(selectableFeature.properties.objectId),
         String(selectableFeature.properties.layerId),
       );
     } else {
-      selectObjectRef.current(null, selectedLayerIdRef.current);
+      const polygonHit = findSelectablePolygonAtCoordinate(projectLayersRef.current, [
+        event.lngLat.lng,
+        event.lngLat.lat,
+      ]);
+      selectObjectRef.current(
+        polygonHit?.objectId ?? null,
+        polygonHit?.layerId ?? selectedLayerIdRef.current,
+      );
     }
 
     return true;

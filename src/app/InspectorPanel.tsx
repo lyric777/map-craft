@@ -1,5 +1,11 @@
 import { Copy, Trash2 } from 'lucide-react';
 
+import {
+  EXTRUSION_HEIGHT_SLIDER_MAX,
+  extrusionHeightToSlider,
+  extrusionSliderToHeight,
+  formatExtrusionHeight,
+} from '../lib/extrusionHeight';
 import { isFreeDrawObject } from '../lib/project';
 import type { GeometryEditMode } from '../map/types';
 import type { MapcraftObject } from '../types/project';
@@ -146,19 +152,20 @@ export function InspectorPanel({
               <span className={labelClassName}>3D Height</span>
               <input
                 className="w-full accent-accent"
-                max={500}
+                max={EXTRUSION_HEIGHT_SLIDER_MAX}
                 min={0}
-                step={5}
+                step={1}
                 type="range"
-                value={object.style.extrusionHeight}
+                value={extrusionHeightToSlider(object.style.extrusionHeight)}
                 onChange={(event) =>
-                  onStyleChange({ extrusionHeight: Number(event.target.value) })
+                  onStyleChange({
+                    extrusionHeight: extrusionSliderToHeight(Number(event.target.value)),
+                  })
                 }
               />
-              <div className="mt-1 text-xs text-subtle">
-                {object.style.extrusionHeight === 0
-                  ? 'Flat'
-                  : `${object.style.extrusionHeight} m`}
+              <div className="mt-1 flex justify-between gap-3 text-xs text-subtle">
+                <span>{formatExtrusionHeight(object.style.extrusionHeight)}</span>
+                <span>Map-scale visual height</span>
               </div>
             </label>
           ) : null}
