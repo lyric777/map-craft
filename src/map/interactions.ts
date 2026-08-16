@@ -3,7 +3,6 @@ import maplibregl from 'maplibre-gl';
 import { createDrawingHandlers } from './drawingInteractions';
 import { createEditingHandlers } from './editingInteractions';
 import type { MapInteractionBindings } from './interactionBindings';
-import { POLYGON_EXTRUSION_LAYER_ID } from './constants';
 
 export const bindMapInteractions = ({
   map,
@@ -12,6 +11,9 @@ export const bindMapInteractions = ({
   const editing = createEditingHandlers({ map, ...bindings });
   const drawing = createDrawingHandlers({ map, ...bindings });
   const handleMouseDown = (event: maplibregl.MapMouseEvent) => {
+    if (editing.handleMapMouseDown(event)) {
+      return;
+    }
     drawing.handleMouseDown(event);
   };
   const handleClick = (event: maplibregl.MapMouseEvent) => {
@@ -36,21 +38,6 @@ export const bindMapInteractions = ({
     editing.handleMouseUp();
   };
 
-  map.on('mouseenter', 'polygon-fill-hit', editing.handleObjectMouseEnter);
-  map.on('mouseenter', POLYGON_EXTRUSION_LAYER_ID, editing.handleObjectMouseEnter);
-  map.on('mouseenter', 'polygon-line-hit', editing.handleObjectMouseEnter);
-  map.on('mouseenter', 'line-string-hit', editing.handleObjectMouseEnter);
-  map.on('mouseenter', 'points-hit', editing.handleObjectMouseEnter);
-  map.on('mouseleave', 'polygon-fill-hit', editing.handleObjectMouseLeave);
-  map.on('mouseleave', POLYGON_EXTRUSION_LAYER_ID, editing.handleObjectMouseLeave);
-  map.on('mouseleave', 'polygon-line-hit', editing.handleObjectMouseLeave);
-  map.on('mouseleave', 'line-string-hit', editing.handleObjectMouseLeave);
-  map.on('mouseleave', 'points-hit', editing.handleObjectMouseLeave);
-  map.on('mousedown', 'polygon-fill-hit', editing.handleObjectMouseDown);
-  map.on('mousedown', POLYGON_EXTRUSION_LAYER_ID, editing.handleObjectMouseDown);
-  map.on('mousedown', 'polygon-line-hit', editing.handleObjectMouseDown);
-  map.on('mousedown', 'line-string-hit', editing.handleObjectMouseDown);
-  map.on('mousedown', 'points-hit', editing.handleObjectMouseDown);
   map.on('mouseenter', 'edit-vertex-hit', editing.handleVertexMouseEnter);
   map.on('mouseleave', 'edit-vertex-hit', editing.handleVertexMouseLeave);
   map.on('mousedown', 'edit-vertex-hit', editing.handleVertexMouseDown);
@@ -62,21 +49,6 @@ export const bindMapInteractions = ({
   map.on('mouseout', editing.handleMouseOut);
 
   return () => {
-    map.off('mouseenter', 'polygon-fill-hit', editing.handleObjectMouseEnter);
-    map.off('mouseenter', POLYGON_EXTRUSION_LAYER_ID, editing.handleObjectMouseEnter);
-    map.off('mouseenter', 'polygon-line-hit', editing.handleObjectMouseEnter);
-    map.off('mouseenter', 'line-string-hit', editing.handleObjectMouseEnter);
-    map.off('mouseenter', 'points-hit', editing.handleObjectMouseEnter);
-    map.off('mouseleave', 'polygon-fill-hit', editing.handleObjectMouseLeave);
-    map.off('mouseleave', POLYGON_EXTRUSION_LAYER_ID, editing.handleObjectMouseLeave);
-    map.off('mouseleave', 'polygon-line-hit', editing.handleObjectMouseLeave);
-    map.off('mouseleave', 'line-string-hit', editing.handleObjectMouseLeave);
-    map.off('mouseleave', 'points-hit', editing.handleObjectMouseLeave);
-    map.off('mousedown', 'polygon-fill-hit', editing.handleObjectMouseDown);
-    map.off('mousedown', POLYGON_EXTRUSION_LAYER_ID, editing.handleObjectMouseDown);
-    map.off('mousedown', 'polygon-line-hit', editing.handleObjectMouseDown);
-    map.off('mousedown', 'line-string-hit', editing.handleObjectMouseDown);
-    map.off('mousedown', 'points-hit', editing.handleObjectMouseDown);
     map.off('mouseenter', 'edit-vertex-hit', editing.handleVertexMouseEnter);
     map.off('mouseleave', 'edit-vertex-hit', editing.handleVertexMouseLeave);
     map.off('mousedown', 'edit-vertex-hit', editing.handleVertexMouseDown);

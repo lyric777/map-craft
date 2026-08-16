@@ -10,13 +10,9 @@ import {
   isFreeDrawObject,
   translateGeometry,
 } from '../lib/project';
-import { OBJECT_INTERACTIVE_LAYER_IDS } from './constants';
+import { hitTestObject } from './hitTesting';
 import type { MapInteractionBindings } from './interactionBindings';
-import { findSelectablePolygonAtCoordinate } from './selection';
 import { findNearestSnapVertex, findObjectSnapTranslation } from './snapping';
-
-const isFeatureSelectable = (feature: MapGeoJSONFeature | undefined): feature is MapGeoJSONFeature =>
-  Boolean(feature?.properties?.objectId);
 
 const isFeatureLocked = (feature: MapGeoJSONFeature | undefined) =>
   feature?.properties?.layerLocked === true || feature?.properties?.layerLocked === 'true';
@@ -71,6 +67,24 @@ export const createEditingHandlers = ({
     updateCanvasCursor();
   };
 
+  const getObjectHit = (event: MapMouseEvent) =>
+    hitTestObject(
+      map,
+      projectLayersRef.current,
+      { x: event.point.x, y: event.point.y },
+      [event.lngLat.lng, event.lngLat.lat],
+    );
+
+  const clearHoveredObject = () => {
+    if (hoverObjectIdRef.current === null) {
+      return;
+    }
+
+    hoverObjectIdRef.current = null;
+    setHoverObjectId(null);
+    updateCanvasCursor();
+  };
+
   const getSelectedEditableShape = () => {
     const object = selectedObjectRef.current;
     if (!object || isFreeDrawObject(object)) {
@@ -115,66 +129,35 @@ export const createEditingHandlers = ({
     );
   };
 
-  const handleObjectMouseEnter = (event: MapLayerMouseEvent) => {
+  const handleMapMouseDown = (event: MapMouseEvent) => {
+    if (event.defaultPrevented || dragVertexIndexRef.current !== null) {
+      return true;
+    }
+
     if (
       currentToolRef.current !== 'move' ||
       geometryEditModeRef.current !== null ||
-      dragVertexIndexRef.current !== null ||
-      dragObjectIdRef.current !== null
-    ) {
-      return;
-    }
-
-    const feature = event.features?.[0];
-    if (!isFeatureSelectable(feature) || isFeatureLocked(feature)) {
-      return;
-    }
-
-    hoverObjectIdRef.current = String(feature.properties.objectId);
-    setHoverObjectId(String(feature.properties.objectId));
-    updateCanvasCursor();
-  };
-
-  const handleObjectMouseLeave = () => {
-    if (dragObjectIdRef.current !== null || dragVertexIndexRef.current !== null) {
-      return;
-    }
-
-    hoverObjectIdRef.current = null;
-    setHoverObjectId(null);
-    updateCanvasCursor();
-  };
-
-  const handleObjectMouseDown = (event: MapLayerMouseEvent) => {
-    if (
-      currentToolRef.current !== 'move' ||
-      geometryEditModeRef.current !== null ||
-      dragVertexIndexRef.current !== null ||
       hoverVertexIndexRef.current !== null
     ) {
-      return;
+      return false;
     }
 
-    const feature = event.features?.[0];
-    if (!isFeatureSelectable(feature) || isFeatureLocked(feature)) {
-      return;
-    }
-
-    const objectId = String(feature.properties.objectId);
-    if (objectId !== selectedObjectRef.current?.id || !selectedObjectRef.current) {
-      return;
+    const hit = getObjectHit(event);
+    if (!hit || hit.objectId !== selectedObjectRef.current?.id || !selectedObjectRef.current) {
+      return false;
     }
 
     event.preventDefault();
-    dragObjectIdRef.current = objectId;
-    hoverObjectIdRef.current = objectId;
+    dragObjectIdRef.current = hit.objectId;
+    hoverObjectIdRef.current = hit.objectId;
     objectDragStartRef.current = [event.lngLat.lng, event.lngLat.lat];
     objectDragGeometryRef.current = structuredClone(selectedObjectRef.current.geometry);
     dragMovedRef.current = false;
-    setDragObjectId(objectId);
-    setHoverObjectId(objectId);
+    setDragObjectId(hit.objectId);
+    setHoverObjectId(hit.objectId);
     map.dragPan.disable();
     updateCanvasCursor();
+    return true;
   };
 
   const handleVertexMouseEnter = (event: MapLayerMouseEvent) => {
@@ -290,35 +273,8 @@ export const createEditingHandlers = ({
       return true;
     }
 
-    const hitPadding = 4;
-    const interactiveFeatures = map.queryRenderedFeatures(
-      [
-        [event.point.x - hitPadding, event.point.y - hitPadding],
-        [event.point.x + hitPadding, event.point.y + hitPadding],
-      ],
-      {
-      layers: [...OBJECT_INTERACTIVE_LAYER_IDS],
-      },
-    );
-
-    const selectableFeature = interactiveFeatures.find(
-      (feature) => isFeatureSelectable(feature) && !isFeatureLocked(feature),
-    );
-    if (selectableFeature) {
-      selectObjectRef.current(
-        String(selectableFeature.properties.objectId),
-        String(selectableFeature.properties.layerId),
-      );
-    } else {
-      const polygonHit = findSelectablePolygonAtCoordinate(projectLayersRef.current, [
-        event.lngLat.lng,
-        event.lngLat.lat,
-      ]);
-      selectObjectRef.current(
-        polygonHit?.objectId ?? null,
-        polygonHit?.layerId ?? selectedLayerIdRef.current,
-      );
-    }
+    const hit = getObjectHit(event);
+    selectObjectRef.current(hit?.objectId ?? null, hit?.layerId ?? selectedLayerIdRef.current);
 
     return true;
   };
@@ -409,6 +365,22 @@ export const createEditingHandlers = ({
       return true;
     }
 
+    if (
+      currentToolRef.current === 'move' &&
+      geometryEditModeRef.current === null &&
+      hoverVertexIndexRef.current === null
+    ) {
+      const hit = getObjectHit(event);
+      const nextHoveredObjectId = hit?.objectId ?? null;
+      if (hoverObjectIdRef.current !== nextHoveredObjectId) {
+        hoverObjectIdRef.current = nextHoveredObjectId;
+        setHoverObjectId(nextHoveredObjectId);
+        updateCanvasCursor();
+      }
+    } else if (dragObjectIdRef.current === null) {
+      clearHoveredObject();
+    }
+
     return false;
   };
 
@@ -444,15 +416,16 @@ export const createEditingHandlers = ({
 
   const handleMouseOut = () => {
     clearHoveredSegment();
+    if (dragObjectIdRef.current === null && dragVertexIndexRef.current === null) {
+      clearHoveredObject();
+    }
     if (dragVertexIndexRef.current === null) {
       setHoverCoordinate(null);
     }
   };
 
   return {
-    handleObjectMouseEnter,
-    handleObjectMouseLeave,
-    handleObjectMouseDown,
+    handleMapMouseDown,
     handleVertexMouseEnter,
     handleVertexMouseLeave,
     handleVertexMouseDown,
